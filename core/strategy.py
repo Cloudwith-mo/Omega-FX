@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import pandas as pd
+from config.settings import DEFAULT_BREAKOUT_CONFIG, BreakoutConfig
 
 
 @dataclass
@@ -16,6 +17,7 @@ class TradeDecision:
     stop_distance_pips: Optional[float]
     take_profit_distance_pips: Optional[float]
     reason: str
+    variant: str = "v1_cross"
 
 
 def _wilder_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -35,7 +37,11 @@ def annotate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["SMA_fast"] = out["close"].rolling(20, min_periods=20).mean()
     out["SMA_slow"] = out["close"].rolling(50, min_periods=50).mean()
+    out["SMA_trend"] = out["close"].rolling(200, min_periods=200).mean()
     out["ATR_14"] = _wilder_atr(out, 14)
+    lookback = DEFAULT_BREAKOUT_CONFIG.lookback_bars
+    out["HIGH_BREAKOUT"] = out["high"].rolling(lookback, min_periods=lookback).max()
+    out["LOW_BREAKOUT"] = out["low"].rolling(lookback, min_periods=lookback).min()
     return out
 
 
@@ -57,9 +63,33 @@ def generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDec
     tp_distance = 3.0 * atr_pips
 
     if fast_prev <= slow_prev and fast_now > slow_now:
-        return TradeDecision("long", stop_distance, tp_distance, "SMA bullish crossover")
+        return TradeDecision("long", stop_distance, tp_distance, "SMA bullish crossover", variant="v1_cross")
 
     if fast_prev >= slow_prev and fast_now < slow_now:
-        return TradeDecision("short", stop_distance, tp_distance, "SMA bearish crossover")
+        return TradeDecision("short", stop_distance, tp_distance, "SMA bearish crossover", variant="v1_cross")
+
+    momentum_variant = _momentum_signal(current_row, previous_row)
+    if momentum_variant:
+        action = momentum_variant
+        reason = "SMA momentum continuation"
+        return TradeDecision(action, stop_distance, tp_distance, reason, variant="v2_momentum")
 
     return TradeDecision("flat", None, None, "No signal")
+
+
+def _momentum_signal(current_row: pd.Series, previous_row: pd.Series) -> Optional[str]:
+    fast_now = current_row["SMA_fast"]
+    slow_now = current_row["SMA_slow"]
+    fast_prev = previous_row["SMA_fast"]
+    slow_prev = previous_row["SMA_slow"]
+    close_price = current_row["close"]
+
+    if pd.isna(fast_now) or pd.isna(slow_now) or pd.isna(fast_prev) or pd.isna(slow_prev):
+        return None
+
+    band = 0.001  # ~10 pips band around SMA
+    if fast_now > slow_now and fast_prev > slow_prev and close_price >= slow_now * (1 - band):
+        return "long"
+    if fast_now < slow_now and fast_prev < slow_prev and close_price <= slow_now * (1 + band):
+        return "short"
+    return None

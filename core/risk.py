@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
+from typing import Iterable, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - avoid circular imports
+    from config.settings import PropChallengeConfig
+    from core.backtest import ActivePosition
 
 
 class RiskMode(Enum):
@@ -12,22 +19,36 @@ class RiskMode(Enum):
     CONSERVATIVE = "conservative"
 
 
-RISK_CONFIG = {
-    RiskMode.ULTRA_ULTRA_CONSERVATIVE: {
-        "max_risk_per_trade": 0.0010,  # 0.10%
-        "max_trades_per_day": 2,
-        "daily_loss_cap": 0.010,  # 1%
-    },
-    RiskMode.ULTRA_CONSERVATIVE: {
-        "max_risk_per_trade": 0.0020,  # 0.20%
-        "max_trades_per_day": 3,
-        "daily_loss_cap": 0.015,  # 1.5%
-    },
-    RiskMode.CONSERVATIVE: {
-        "max_risk_per_trade": 0.0030,  # 0.30%
-        "max_trades_per_day": 4,
-        "daily_loss_cap": 0.020,  # 2%
-    },
+@dataclass(frozen=True)
+class RiskProfile:
+    risk_per_trade_fraction: float
+    daily_loss_limit_fraction: float
+    max_trailing_dd_fraction: float
+    max_open_trades: int
+
+
+RISK_PROFILES = {
+    # Assumes up to 2 sequential full-loss trades → theoretical daily loss <= 0.4%.
+    RiskMode.ULTRA_ULTRA_CONSERVATIVE: RiskProfile(
+        risk_per_trade_fraction=0.0020,
+        daily_loss_limit_fraction=0.01,
+        max_trailing_dd_fraction=0.02,
+        max_open_trades=1,
+    ),
+    # Assumes up to 3 sequential full-loss trades → <= 1.2% daily loss.
+    RiskMode.ULTRA_CONSERVATIVE: RiskProfile(
+        risk_per_trade_fraction=0.0040,
+        daily_loss_limit_fraction=0.015,
+        max_trailing_dd_fraction=0.03,
+        max_open_trades=1,
+    ),
+    # Assumes up to 3 sequential full-loss trades → <= 1.8% daily loss (<2% cap).
+    RiskMode.CONSERVATIVE: RiskProfile(
+        risk_per_trade_fraction=0.0060,
+        daily_loss_limit_fraction=0.02,
+        max_trailing_dd_fraction=0.04,
+        max_open_trades=1,
+    ),
 }
 
 
@@ -51,6 +72,10 @@ class RiskState:
         self.start_of_day_equity = initial_equity
         self.current_mode = initial_mode
         self.trading_paused = False
+        self.internal_stop_out_triggered = False
+        self.prop_fail_triggered = False
+        self.internal_stop_timestamp: datetime | None = None
+        self.prop_fail_timestamp: datetime | None = None
 
     @property
     def total_dd_from_peak(self) -> float:
@@ -76,44 +101,118 @@ class RiskState:
         """Reset daily metrics for a fresh trading day."""
         self.start_of_day_equity = self.current_equity
 
-    def update_mode_based_on_performance(
+    def enforce_drawdown_limits(
         self,
-        win_rate_last_N: float | None,
-        max_dd_last_N: float | None,
+        profile: RiskProfile,
+        challenge: "PropChallengeConfig",
+        timestamp: datetime | None = None,
     ) -> None:
-        """Toggle risk modes based on drawdown and recent performance."""
         dd = self.total_dd_from_peak
 
-        # Step-down logic based purely on drawdown depth.
-        if dd >= 0.03:
+        if dd >= challenge.max_total_loss_fraction:
+            self.prop_fail_triggered = True
             self.trading_paused = True
-            self.current_mode = RiskMode.ULTRA_ULTRA_CONSERVATIVE
-        elif dd >= 0.025:
-            self.current_mode = RiskMode.ULTRA_ULTRA_CONSERVATIVE
-        elif dd >= 0.015:
-            if self.current_mode == RiskMode.CONSERVATIVE:
-                self.current_mode = RiskMode.ULTRA_CONSERVATIVE
-            elif self.current_mode == RiskMode.ULTRA_CONSERVATIVE:
-                self.current_mode = RiskMode.ULTRA_ULTRA_CONSERVATIVE
+            if self.prop_fail_timestamp is None and timestamp is not None:
+                self.prop_fail_timestamp = timestamp
 
-        # Step-up only when at peak equity and stats are strong.
-        meets_stats = (
-            win_rate_last_N is not None
-            and win_rate_last_N >= 0.58
-            and max_dd_last_N is not None
-            and max_dd_last_N <= 0.015
+        if dd >= profile.max_trailing_dd_fraction:
+            self.internal_stop_out_triggered = True
+            self.trading_paused = True
+            if self.internal_stop_timestamp is None and timestamp is not None:
+                self.internal_stop_timestamp = timestamp
+
+    def can_trade(self) -> bool:
+        return not (self.trading_paused or self.internal_stop_out_triggered)
+
+
+def can_open_new_trade(
+    todays_realized_pnl: float,
+    open_positions: Iterable["ActivePosition"],
+    proposed_trade_risk_amount: float,
+    equity_start_of_day: float,
+    profile: RiskProfile,
+    challenge: "PropChallengeConfig",
+) -> bool:
+    internal_daily_limit = profile.daily_loss_limit_fraction * equity_start_of_day
+    prop_daily_limit = challenge.max_daily_loss_fraction * equity_start_of_day
+    if internal_daily_limit - prop_daily_limit > 1e-9:
+        raise ValueError("Internal daily limit exceeds prop firm daily cap.")
+
+    realized_loss = max(0.0, -todays_realized_pnl)
+    worst_case_open_loss = realized_loss
+    for pos in open_positions:
+        worst_case_open_loss += pos.max_loss_amount
+
+    worst_case_open_loss += proposed_trade_risk_amount
+    return worst_case_open_loss <= internal_daily_limit
+
+
+@dataclass
+class ModeTransition:
+    timestamp: datetime
+    old_mode: RiskMode
+    new_mode: RiskMode
+    reason: str
+
+
+@dataclass
+class RiskModeController:
+    state: RiskState
+    window_size: int = 40
+    transitions: list[ModeTransition] = field(default_factory=list)
+    trade_pnls: deque[float] = field(default_factory=lambda: deque(maxlen=40))
+    equity_history: deque[float] = field(default_factory=lambda: deque(maxlen=40))
+
+    def __post_init__(self) -> None:  # pragma: no cover - trivial
+        self.trade_pnls = deque(maxlen=self.window_size)
+        self.equity_history = deque(maxlen=self.window_size)
+
+    @property
+    def current_mode(self) -> RiskMode:
+        return self.state.current_mode
+
+    def transition(self, timestamp: datetime, new_mode: RiskMode, reason: str) -> None:
+        old_mode = self.state.current_mode
+        if new_mode == old_mode:
+            return
+        self.transitions.append(
+            ModeTransition(timestamp=timestamp, old_mode=old_mode, new_mode=new_mode, reason=reason)
         )
-        if self.current_equity == self.equity_peak and meets_stats:
-            if self.current_mode == RiskMode.ULTRA_ULTRA_CONSERVATIVE:
-                self.current_mode = RiskMode.ULTRA_CONSERVATIVE
-                self.trading_paused = False
-            elif self.current_mode == RiskMode.ULTRA_CONSERVATIVE:
-                self.current_mode = RiskMode.CONSERVATIVE
+        self.state.current_mode = new_mode
 
-    def can_trade_today(self) -> bool:
-        """True when trading is allowed under pause + daily loss rules."""
-        if self.trading_paused:
-            return False
-        if self.daily_dd >= 0.02:
-            return False
-        return True
+    def step_down_for_drawdown(self, timestamp: datetime, dd_fraction: float) -> None:
+        if dd_fraction >= 0.03:
+            self.transition(timestamp, RiskMode.ULTRA_ULTRA_CONSERVATIVE, "Drawdown >= 3%")
+        elif dd_fraction >= 0.02 and self.state.current_mode == RiskMode.CONSERVATIVE:
+            self.transition(timestamp, RiskMode.ULTRA_CONSERVATIVE, "Drawdown >= 2%")
+
+    def record_trade(self, pnl: float, equity_after_trade: float, timestamp: datetime) -> None:
+        self.trade_pnls.append(pnl)
+        self.equity_history.append(equity_after_trade)
+        self.maybe_step_up(timestamp)
+
+    def maybe_step_up(self, timestamp: datetime) -> None:
+        if len(self.trade_pnls) < self.window_size:
+            return
+        if self.state.current_equity < self.state.equity_peak - 1e-9:
+            return
+
+        win_rate = sum(1 for pnl in self.trade_pnls if pnl > 0) / len(self.trade_pnls)
+        dd_recent = self._recent_drawdown_from_history()
+
+        if win_rate < 0.58 or dd_recent > 0.015:
+            return
+
+        if self.state.current_mode == RiskMode.ULTRA_ULTRA_CONSERVATIVE:
+            self.transition(timestamp, RiskMode.ULTRA_CONSERVATIVE, "Performance step-up")
+        elif self.state.current_mode == RiskMode.ULTRA_CONSERVATIVE:
+            self.transition(timestamp, RiskMode.CONSERVATIVE, "Performance step-up")
+
+    def _recent_drawdown_from_history(self) -> float:
+        if len(self.equity_history) < 2:
+            return 0.0
+        max_equity = max(self.equity_history)
+        min_equity = min(self.equity_history)
+        if max_equity == 0:
+            return 0.0
+        return (max_equity - min_equity) / max_equity

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.risk import RISK_CONFIG, RiskMode
+from core.risk import RISK_PROFILES, RiskMode
 from config.settings import MAX_LOT_SIZE, MIN_LOT_SIZE, PIP_VALUE_PER_STANDARD_LOT
 
 
@@ -27,8 +27,8 @@ def compute_position_size(
     if stop_distance_pips <= 0:
         raise ValueError("stop_distance_pips must be positive to compute position size.")
 
-    config = RISK_CONFIG[risk_mode]
-    risk_amount = account_equity * config["max_risk_per_trade"]
+    profile = RISK_PROFILES[risk_mode]
+    risk_amount = account_equity * profile.risk_per_trade_fraction
 
     raw_lots = risk_amount / (stop_distance_pips * pip_value_per_standard_lot)
     clipped_lots = min(max(raw_lots, MIN_LOT_SIZE), MAX_LOT_SIZE)

@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover - path hack for CLI usage
 import pandas as pd
 
 from config.settings import DEFAULT_DATA_PATH
-from core.backtest import REQUIRED_COLUMNS, run_backtest
+from core.backtest import REQUIRED_COLUMNS, load_all_symbols, run_backtest
 
 try:  # pragma: no cover
     import matplotlib.pyplot as plt
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--starting_equity",
         type=float,
-        default=10_000.0,
+        default=100_000.0,
         help="Initial equity for the backtest.",
     )
     parser.add_argument(
@@ -47,31 +47,55 @@ def parse_args() -> argparse.Namespace:
         default="outputs",
         help="Directory for equity curve / trade logs.",
     )
+    parser.add_argument(
+        "--portfolio",
+        action="store_true",
+        help="Use all configured symbols instead of a single CSV.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    data_path = Path(args.data_path or DEFAULT_DATA_PATH)
+    symbol_data = None
+    df = None
+    data_source: str | None = None
 
-    if not data_path.exists():
-        print(f"[!] Data file not found: {data_path}")
-        return 1
-
+    if args.portfolio:
+        try:
+            symbol_data = load_all_symbols()
+        except ValueError as exc:
+            print(f"[!] Portfolio load failed: {exc}")
+            return 1
+    else:
+        data_path = Path(args.data_path or DEFAULT_DATA_PATH)
+        if not data_path.exists():
+            print(f"[!] Data file not found: {data_path}")
+            return 1
+        try:
+            df = pd.read_csv(data_path)
+        except Exception as exc:  # pragma: no cover - CLI guard
+            print(f"[!] Failed to load CSV: {exc}")
+            return 1
+        data_source = str(data_path)
     try:
-        df = pd.read_csv(data_path)
-    except Exception as exc:  # pragma: no cover - CLI guard
-        print(f"[!] Failed to load CSV: {exc}")
-        return 1
-
-    try:
-        result = run_backtest(df, starting_equity=args.starting_equity, data_source=str(data_path))
+        result = run_backtest(
+            df,
+            starting_equity=args.starting_equity,
+            data_source=data_source,
+            symbol_data_map=symbol_data,
+        )
     except ValueError as exc:
         print(f"[!] Backtest aborted: {exc}")
         return 1
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    trading_days = max(1, len(result.daily_stats))
+    trades_per_year = result.number_of_trades / max(1, trading_days / 252)
+
+    combo_summary = {str(combo): count for combo, count in result.pre_risk_combo_counts.items()}
 
     metrics = {
         "starting_equity": args.starting_equity,
@@ -81,6 +105,25 @@ def main() -> int:
         "win_rate_pct": result.win_rate * 100,
         "number_of_trades": result.number_of_trades,
         "average_rr": result.average_rr,
+        "risk_mode": result.risk_mode.value,
+        "max_daily_loss_fraction": result.max_daily_loss_fraction,
+        "internal_stop_out_triggered": result.internal_stop_out_triggered,
+        "prop_fail_triggered": result.prop_fail_triggered,
+        "mode_transition_summary": result.mode_transition_summary,
+        "filtered_counts": result.filtered_trades_by_reason,
+        "raw_signal_count": result.raw_signal_count,
+        "after_session_count": result.after_session_count,
+        "after_trend_count": result.after_trend_count,
+        "after_volatility_count": result.after_volatility_count,
+        "after_risk_count": result.after_risk_aggression_count,
+        "after_breakout_count": result.after_breakout_count,
+        "signal_variant_counts": result.signal_variant_counts,
+        "trades_per_year": trades_per_year,
+        "pre_risk_combo_counts": combo_summary,
+        "tier_counts": result.tier_counts,
+        "tier_expectancy": result.tier_expectancy,
+        "tier_trades_per_year": result.tier_trades_per_year,
+        "trades_per_symbol": result.trades_per_symbol,
     }
 
     print("\n===== BACKTEST SUMMARY =====")
@@ -91,6 +134,49 @@ def main() -> int:
     print(f"Win rate        : {metrics['win_rate_pct']:.2f}%")
     print(f"Number of trades: {metrics['number_of_trades']}")
     print(f"Average R:R     : {metrics['average_rr']:.2f}x")
+    print(f"Trades per year : {metrics['trades_per_year']:.1f}")
+    print(f"Max daily loss  : {metrics['max_daily_loss_fraction']:.2%}")
+    print(f"Final risk mode : {metrics['risk_mode']}")
+    print(f"Internal stop?  : {metrics['internal_stop_out_triggered']}")
+    print(f"Prop fail?      : {metrics['prop_fail_triggered']}")
+    print(
+        "Filtered trades : "
+        f"session={metrics['filtered_counts'].get('session', 0)}, "
+        f"trend={metrics['filtered_counts'].get('trend', 0)}, "
+        f"low_vol={metrics['filtered_counts'].get('low_volatility', 0)}, "
+        f"high_vol_sideways={metrics['filtered_counts'].get('high_vol_sideways', 0)}, "
+        f"risk_aggr={metrics['filtered_counts'].get('risk_aggression', 0)}, "
+        f"max_pos={metrics['filtered_counts'].get('max_open_positions', 0)}"
+    )
+    print(
+        "Signal funnel    : "
+        f"raw={metrics['raw_signal_count']} -> "
+        f"session={metrics['after_session_count']} -> "
+        f"trend={metrics['after_trend_count']} -> "
+        f"vol={metrics['after_volatility_count']} -> "
+        f"risk={metrics['after_risk_count']} -> "
+        f"final={metrics['after_breakout_count']}"
+    )
+    print(f"Signal variants  : {metrics['signal_variant_counts']}")
+    tier_counts = metrics["tier_counts"]
+    tier_expectancy = metrics["tier_expectancy"]
+    tier_trades_year = metrics["tier_trades_per_year"]
+    print("Risk tiers       :")
+    for tier in ["A", "B", "UNKNOWN", "C"]:
+        trades_tier = tier_counts.get(tier, 0)
+        expectancy = tier_expectancy.get(tier, 0.0)
+        trades_py = tier_trades_year.get(tier, 0.0)
+        print(f"  {tier:<8} trades={trades_tier:4d} | expectancy={expectancy:.2f}R | trades/yr={trades_py:.1f}")
+    if metrics["trades_per_symbol"]:
+        print("Trades per symbol:")
+        for symbol, count in metrics["trades_per_symbol"].items():
+            print(f"  {symbol:<8} -> {count}")
+    pre_risk = result.pre_risk_combo_counts
+    top_combos = sorted(pre_risk.items(), key=lambda kv: kv[1], reverse=True)[:5]
+    if top_combos:
+        print("Top risk combos  :")
+        for combo, count in top_combos:
+            print(f"  {combo} -> {count}")
 
     equity_path = output_dir / "equity_curve.csv"
     trades_path = output_dir / "trades.csv"

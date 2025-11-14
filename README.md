@@ -2,16 +2,33 @@
 
 Phase 1 delivers a conservative EUR/USD backtesting core: risk controls, sizing, strategy logic, and CLI entry points wired for unit testing.
 
-## Quickstart: Get Example EURUSD Data
+## Quickstart: Example EURUSD Data (demo only)
 
 - Repository ships without market data; keep your own MT5/broker exports local.
-- For a ready-made playground file, download the public EURUSD_H1.csv from `mohammad95labbaf/EURUSD_LSTM_Attention`:
+- For a playground EURUSD file only (not for live trading), you may run:
   ```bash
   python scripts/download_example_data.py
   python scripts/run_backtest.py
   ```
-- This open dataset is for development/testing only — not live trading decisions.
-- Swap `data/eurusd_h1.csv` with your broker export anytime; no code changes needed.
+- This open dataset is purely for development smoke tests. The real workflow below expects MT5 exports for **all** symbols.
+
+## MT5 Data Export → Omega FX
+
+1. In MT5, open each symbol (EURUSD, GBPUSD, USDJPY) on the H1 timeframe and export as CSV (File → Save As…). Save to `raw_data/<SYMBOL>_H1_raw.csv`.
+2. Normalize each export:
+   ```bash
+   python scripts/prepare_mt5_data.py --symbol EURUSD --input raw_data/EURUSD_H1_raw.csv --output data/EURUSD_H1.csv
+   python scripts/prepare_mt5_data.py --symbol GBPUSD --input raw_data/GBPUSD_H1_raw.csv --output data/GBPUSD_H1.csv
+   python scripts/prepare_mt5_data.py --symbol USDJPY --input raw_data/USDJPY_H1_raw.csv --output data/USDJPY_H1.csv
+   ```
+   - The script handles standard MT5 columns (`<DATE>`, `<TIME>`, `<OPEN>`, …, `<TICKVOL>`), merges date+time, sorts ascending, and validates the H1 spacing.
+   - Timestamps are parsed as UTC. If your broker export is local time, either adjust prior to running or note the offset when interpreting results.
+3. Run the full portfolio backtest & challenge sim (will auto-skip symbols without data, but aim to provide all three):
+   ```bash
+   python scripts/run_backtest.py --portfolio
+   python scripts/run_challenge_sim.py --portfolio --step 2000
+   ```
+   The risk engine enforces one global position at a time plus FundedNext rules (2 % daily, 4 % trailing, 3 % / 6 % prop caps) across all loaded symbols.
 
 ## Project Structure
 
@@ -47,17 +64,10 @@ If you point to the header-only placeholder, the CLI will stop early and remind 
 
 ## Data Requirements
 
-- **Columns**: `timestamp`, `open`, `high`, `low`, `close`, `volume` (case-insensitive; the loader normalizes names).
-- **Timezone**: export timestamps in UTC (preferred) or broker time so long as the spacing is consistent; values are parsed into timezone-aware datetimes.
-- **Frequency**: H1 (1-hour) EUR/USD candles sorted ascending.
-- **Cleanup**: delete any blank header/footer rows before saving. The loader will drop empty lines but expects real quotes/trades.
-- **Export tip**: from MT5/your broker, export H1 EUR/USD candles as CSV with the above columns separated by commas.
-- **Git hygiene**: real CSV files such as `data/eurusd_h1.csv` should remain local only (they are gitignored by default).
+- **Columns**: `timestamp`, `open`, `high`, `low`, `close`, `volume` (case-insensitive; the loader normalizes names). The MT5 prep script emits this schema automatically.
+- **Timezone**: export timestamps in UTC when possible. If the raw MT5 file is in broker time, document the offset; the loader ingests the values as-is but treats them as UTC.
+- **Frequency**: H1 (1-hour) candles, sorted ascending, one file per symbol (EURUSD/GBPUSD/USDJPY).
+- **Cleanup**: delete any blank header/footer rows before saving. The prep script drops malformed rows but expects real quotes/trades.
+- **Git hygiene**: real CSV files such as `data/EURUSD_H1.csv` must remain local only (gitignored by default).
 
-Example command once `data/eurusd_h1.csv` is present:
-
-```bash
-python scripts/run_backtest.py --data_path data/eurusd_h1.csv
-```
-
-If `--data_path` is omitted, the CLI falls back to the default defined in `config/settings.py` (`DEFAULT_DATA_PATH`).
+Legacy single-symbol runs still work (e.g. `python scripts/run_backtest.py --data_path data/eurusd_h1.csv`), but the recommended flow is `--portfolio` after preparing all MT5 exports.
