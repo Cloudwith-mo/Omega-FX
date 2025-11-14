@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover - path hack for CLI usage
 import pandas as pd
 
 from config.settings import DEFAULT_DATA_PATH
-from core.backtest import REQUIRED_COLUMNS, load_all_symbols, run_backtest
+from core.backtest import REQUIRED_COLUMNS, run_backtest
 
 try:  # pragma: no cover
     import matplotlib.pyplot as plt
@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use all configured symbols instead of a single CSV.",
     )
+    parser.add_argument(
+        "--entry_mode",
+        choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
+        default=None,
+        help="Override entry mode (default from config).",
+    )
     return parser.parse_args()
 
 
@@ -62,11 +68,7 @@ def main() -> int:
     data_source: str | None = None
 
     if args.portfolio:
-        try:
-            symbol_data = load_all_symbols()
-        except ValueError as exc:
-            print(f"[!] Portfolio load failed: {exc}")
-            return 1
+        pass
     else:
         data_path = Path(args.data_path or DEFAULT_DATA_PATH)
         if not data_path.exists():
@@ -84,6 +86,7 @@ def main() -> int:
             starting_equity=args.starting_equity,
             data_source=data_source,
             symbol_data_map=symbol_data,
+            entry_mode=args.entry_mode,
         )
     except ValueError as exc:
         print(f"[!] Backtest aborted: {exc}")

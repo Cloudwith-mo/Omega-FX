@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -11,13 +12,10 @@ import pandas as pd
 from config.settings import (
     ENABLE_RISK_AGGRESSION_FILTER,
     RISK_AGGRESSION_A_EXPECTANCY,
-    RISK_AGGRESSION_A_SCALE,
     RISK_AGGRESSION_B_EXPECTANCY,
-    RISK_AGGRESSION_B_SCALE,
-    RISK_AGGRESSION_C_SCALE,
     RISK_AGGRESSION_MAP_PATH,
     RISK_AGGRESSION_MIN_TRADES,
-    RISK_AGGRESSION_UNKNOWN_SCALE,
+    RISK_PROFILE_PRESET,
 )
 from core.risk import RiskMode
 
@@ -26,12 +24,19 @@ OVERRIDE_PATH = Path(RISK_AGGRESSION_MAP_PATH)
 
 Combo = Tuple[str | None, str | None, str | None, str | None]
 
-TIER_SCALE_DEFAULTS = {
-    "A": 1.5,
-    "B": 0.75,
-    "UNKNOWN": 0.5,
-    "C": 0.0,
+RISK_PROFILE_PRESETS = {
+    "FULL": {"A": 1.5, "B": 0.75, "UNKNOWN": 0.5, "C": 0.0},
+    "A_ONLY": {"A": 1.5, "B": 0.0, "UNKNOWN": 0.25, "C": 0.0},
+    "A_PLUS_UNKNOWN": {"A": 1.5, "B": 0.25, "UNKNOWN": 0.25, "C": 0.0},
 }
+
+_env_preset = os.environ.get("OMEGA_RISK_PRESET")
+_default_preset = (RISK_PROFILE_PRESET or "FULL").upper()
+_selected_preset = (_env_preset or _default_preset).upper()
+if _selected_preset not in RISK_PROFILE_PRESETS:
+    _selected_preset = "FULL"
+
+TIER_SCALE_DEFAULTS = RISK_PROFILE_PRESETS[_selected_preset]
 
 
 @dataclass(frozen=True)

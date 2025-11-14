@@ -20,9 +20,9 @@ from config.settings import (  # noqa: E402
     DEFAULT_CHALLENGE,
     DEFAULT_CHALLENGE_CONFIG,
     DEFAULT_DATA_PATH,
+    SYMBOLS,
     ChallengeConfig,
 )
-from core.backtest import load_all_symbols  # noqa: E402
 from core.challenge import ChallengeOutcome, run_challenge_sweep  # noqa: E402
 
 
@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use all configured symbols (multi-pair portfolio) instead of a single CSV.",
     )
+    parser.add_argument(
+        "--entry_mode",
+        choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
+        default=None,
+        help="Override entry mode (defaults to config ENTRY_MODE).",
+    )
     return parser.parse_args()
 
 
@@ -51,6 +57,42 @@ def load_price_data(path: Path) -> pd.DataFrame:
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
+def load_portfolio_data() -> dict[str, dict[str, pd.DataFrame]]:
+    data: dict[str, dict[str, pd.DataFrame]] = {}
+
+    def _load_frame(label: str, path_str: str | None) -> pd.DataFrame | None:
+        if not path_str:
+            return None
+        path = Path(path_str)
+        if not path.exists():
+            print(f"[!] Portfolio symbol missing {label} file at {path}; skipping frame.")
+            return None
+        return load_price_data(path)
+
+    for cfg in SYMBOLS:
+        frames: dict[str, pd.DataFrame] = {}
+        h1 = _load_frame("H1", cfg.h1_path)
+        if h1 is not None:
+            frames["H1"] = h1
+        else:
+            print(f"[!] Portfolio symbol {cfg.name} missing H1 data; skipping symbol.")
+            continue
+
+        m15 = _load_frame("M15", cfg.m15_path)
+        if m15 is not None:
+            frames["M15"] = m15
+
+        h4 = _load_frame("H4", cfg.h4_path)
+        if h4 is not None:
+            frames["H4"] = h4
+
+        data[cfg.name] = frames
+
+    if not data:
+        raise ValueError("No portfolio data available. Prepare MT5 exports first.")
+    return data
+
+
 def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
     num_runs = len(outcomes)
     num_passed = sum(1 for o in outcomes if o.passed)
@@ -61,6 +103,7 @@ def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
     failed = [o for o in outcomes if not o.passed]
     avg_days_fail = sum(o.num_trading_days for o in failed) / len(failed) if failed else 0.0
     max_daily_loss = max((o.max_observed_daily_loss_fraction for o in outcomes), default=0.0)
+    max_trailing_dd = max((o.max_trailing_dd_fraction for o in outcomes), default=0.0)
     failure_breakdown = Counter(o.failure_reason or "passed" for o in outcomes)
 
     final_returns = [(o.final_equity - o.num_trading_days * 0 + 0) / DEFAULT_CHALLENGE.start_equity - 1 for o in outcomes]
@@ -108,6 +151,7 @@ def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
         "avg_trading_days_pass": avg_days_pass,
         "avg_trading_days_fail": avg_days_fail,
         "max_daily_loss_fraction": max_daily_loss,
+        "max_trailing_dd_fraction": max_trailing_dd,
         "failure_breakdown": dict(failure_breakdown),
         "return_stats": stats,
         "mean_trades_per_run": mean_trades,
@@ -124,9 +168,9 @@ def main() -> int:
 
     if args.portfolio:
         try:
-            symbol_data = load_all_symbols()
+            symbol_data = load_portfolio_data()
         except ValueError as exc:
-            print(f"[!] Portfolio load failed: {exc}")
+            print(f"[!] {exc}")
             return 1
     else:
         data_path = Path(args.data_path)
@@ -150,6 +194,7 @@ def main() -> int:
         challenge_config=challenge_config,
         prop_config=DEFAULT_CHALLENGE,
         step=args.step,
+        entry_mode=args.entry_mode,
     )
     if not outcomes:
         print("[!] No challenge runs produced. Check dataset length or --step parameter.")
@@ -168,6 +213,7 @@ def main() -> int:
     print(f"Avg trading days (pass): {summary['avg_trading_days_pass']:.2f}")
     print(f"Avg trading days (fail): {summary['avg_trading_days_fail']:.2f}")
     print(f"Max daily loss fraction: {summary['max_daily_loss_fraction']:.2%}")
+    print(f"Max trailing DD fraction: {summary['max_trailing_dd_fraction']:.2%}")
     print(f"Failure breakdown: {summary['failure_breakdown']}")
     print(f"Return stats: {summary['return_stats']}")
     print(

@@ -12,6 +12,7 @@ PIP_VALUE_PER_STANDARD_LOT = 10.0  # EUR/USD pip value at 1 standard lot
 MIN_LOT_SIZE = 0.01
 MAX_LOT_SIZE = 2.0
 DEFAULT_DATA_PATH = "data/eurusd_h1.csv"
+ENTRY_MODE = "H1_ONLY"
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,9 @@ DEFAULT_BREAKOUT_CONFIG = BreakoutConfig()
 @dataclass(frozen=True)
 class SymbolConfig:
     name: str
-    data_path: str
+    h1_path: str
+    m15_path: str | None = None
+    h4_path: str | None = None
 
 
 # Filter toggles
@@ -84,9 +87,27 @@ RISK_AGGRESSION_B_SCALE = 0.5
 RISK_AGGRESSION_UNKNOWN_SCALE = 0.5
 RISK_AGGRESSION_C_SCALE = 0.0
 
+# Risk preset control (overridden by OMEGA_RISK_PRESET env var when set)
+RISK_PROFILE_PRESET = "FULL"
+
 # Symbol configuration for multi-pair backtesting
 SYMBOLS = [
-    SymbolConfig(name="EURUSD", data_path="data/EURUSD_H1.csv"),
-    SymbolConfig(name="GBPUSD", data_path="data/GBPUSD_H1.csv"),
-    SymbolConfig(name="USDJPY", data_path="data/USDJPY_H1.csv"),
+    SymbolConfig(
+        name="EURUSD",
+        h1_path="data/EURUSD_H1.csv",
+        m15_path="data/EURUSD_M15.csv",
+        h4_path="data/EURUSD_H4.csv",
+    ),
+    SymbolConfig(
+        name="GBPUSD",
+        h1_path="data/GBPUSD_H1.csv",
+        m15_path="data/GBPUSD_M15.csv",
+        h4_path="data/GBPUSD_H4.csv",
+    ),
+    SymbolConfig(
+        name="USDJPY",
+        h1_path="data/USDJPY_H1.csv",
+        m15_path="data/USDJPY_M15.csv",
+        h4_path="data/USDJPY_H4.csv",
+    ),
 ]
