@@ -3,4 +3,7 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 outputs/
+results/
 .DS_Store
+data/*.csv
+!data/eurusd_placeholder.csv

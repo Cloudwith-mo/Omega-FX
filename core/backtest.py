@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
+from pathlib import Path
+
 import pandas as pd
 
-from config.settings import INITIAL_EQUITY, PIP_VALUE_PER_STANDARD_LOT
+from config.settings import DEFAULT_DATA_PATH, INITIAL_EQUITY, PIP_VALUE_PER_STANDARD_LOT
 from core.risk import RISK_CONFIG, RiskMode, RiskState
 from core.sizing import compute_position_size
 from core.strategy import annotate_indicators, generate_signal
@@ -37,6 +39,7 @@ class BacktestResult:
     win_rate: float
     number_of_trades: int
     final_equity: float
+    average_rr: float
 
 
 def _pip_pnl(entry: float, exit: float, direction: str, lot_size: float) -> float:
@@ -57,10 +60,66 @@ def _recent_drawdown(values: List[float]) -> Optional[float]:
     return float(dd)
 
 
+def _format_source_label(source: str | Path | None) -> str:
+    return f" in {source}" if source else ""
+
+
+def _prepare_price_data(df: pd.DataFrame, *, source: str | Path | None = None) -> pd.DataFrame:
+    """Validate and normalize OHLCV data for backtesting."""
+    if df.empty:
+        raise ValueError(
+            f"No usable rows found{_format_source_label(source)}. "
+            "Make sure you exported real EUR/USD H1 data with the required columns."
+        )
+
+    working = df.dropna(how="all").copy()
+
+    if working.empty:
+        raise ValueError(
+            f"No usable rows found{_format_source_label(source)}. "
+            "Make sure you exported real EUR/USD H1 data with the required columns."
+        )
+
+    lower_map = {col.lower(): col for col in working.columns}
+    missing = [col for col in REQUIRED_COLUMNS if col not in lower_map]
+    if missing:
+        raise ValueError(
+            f"Missing required columns {missing}{_format_source_label(source)}. "
+            "Expected columns: timestamp, open, high, low, close, volume."
+        )
+
+    rename_map = {lower_map[col]: col for col in REQUIRED_COLUMNS}
+    prepared = working.rename(columns=rename_map)
+
+    try:
+        prepared["timestamp"] = pd.to_datetime(prepared["timestamp"], utc=True)
+    except Exception as exc:  # pragma: no cover - depends on input file
+        raise ValueError(f"timestamp column could not be parsed{_format_source_label(source)}: {exc}") from exc
+
+    numeric_cols = ["open", "high", "low", "close", "volume"]
+    for col in numeric_cols:
+        try:
+            prepared[col] = pd.to_numeric(prepared[col], errors="raise")
+        except Exception as exc:  # pragma: no cover - depends on input file
+            raise ValueError(f"{col} column must be numeric{_format_source_label(source)}: {exc}") from exc
+
+    prepared = prepared.dropna(subset=list(REQUIRED_COLUMNS))
+
+    if prepared.empty:
+        raise ValueError(
+            f"No usable rows found{_format_source_label(source)}. "
+            "Make sure you exported real EUR/USD H1 data with the required columns."
+        )
+
+    prepared = prepared.sort_values("timestamp").reset_index(drop=True)
+    return prepared
+
+
 def run_backtest(
     df: pd.DataFrame,
     starting_equity: float = INITIAL_EQUITY,
     initial_mode: RiskMode = RiskMode.CONSERVATIVE,
+    data_source: str | Path | None = None,
 ) -> BacktestResult:
     """
     Run a single-position backtest using SMA signals and ATR stops.
@@ -70,17 +129,7 @@ def run_backtest(
         * Entries/exits take the close of the bar that triggers the event.
         * SL/TP are simple price levels derived from ATR; no intrabar simulation.
     """
-    if df.empty:
-        raise ValueError("Backtest requires at least one row of OHLCV data.")
-
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
-        raise ValueError(f"DataFrame is missing required columns: {sorted(missing)}")
-
-    price_df = df.copy()
-    price_df["timestamp"] = pd.to_datetime(price_df["timestamp"])
-    price_df = price_df.sort_values("timestamp").reset_index(drop=True)
-    price_df = annotate_indicators(price_df)
+    price_df = annotate_indicators(_prepare_price_data(df, source=data_source))
 
     risk_state = RiskState(starting_equity, initial_mode)
     position: Optional[ActivePosition] = None
@@ -136,6 +185,9 @@ def run_backtest(
             if exit_price is not None:
                 pnl = _pip_pnl(position.entry_price, exit_price, position.direction, position.lot_size)
                 risk_state.update_equity(risk_state.current_equity + pnl)
+                risk = abs(position.entry_price - position.stop_loss)
+                reward = abs(position.take_profit - position.entry_price)
+                risk_reward = reward / risk if risk > 1e-12 else None
                 trades.append(
                     {
                         "entry_time": position.entry_time,
@@ -143,9 +195,13 @@ def run_backtest(
                         "direction": position.direction,
                         "entry_price": position.entry_price,
                         "exit_price": exit_price,
+                        "stop_loss": position.stop_loss,
+                        "take_profit": position.take_profit,
+                        "lot_size": position.lot_size,
                         "pnl": pnl,
                         "mode_at_entry": position.mode_at_entry.value,
                         "reason": exit_reason,
+                        "risk_reward": risk_reward,
                     }
                 )
                 recent_trade_pnls.append(pnl)
@@ -220,6 +276,8 @@ def run_backtest(
         if trades
         else 0.0
     )
+    rr_values = [t["risk_reward"] for t in trades if t.get("risk_reward") is not None]
+    average_rr = sum(rr_values) / len(rr_values) if rr_values else 0.0
 
     return BacktestResult(
         equity_curve=equity_curve,
@@ -229,4 +287,5 @@ def run_backtest(
         win_rate=win_rate,
         number_of_trades=len(trades),
         final_equity=final_equity,
+        average_rr=average_rr,
     )
