@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -11,27 +12,59 @@ import pandas as pd
 from config.settings import (
     ENABLE_RISK_AGGRESSION_FILTER,
     RISK_AGGRESSION_A_EXPECTANCY,
-    RISK_AGGRESSION_A_SCALE,
     RISK_AGGRESSION_B_EXPECTANCY,
-    RISK_AGGRESSION_B_SCALE,
-    RISK_AGGRESSION_C_SCALE,
     RISK_AGGRESSION_MAP_PATH,
     RISK_AGGRESSION_MIN_TRADES,
-    RISK_AGGRESSION_UNKNOWN_SCALE,
+    RISK_PROFILE_PRESET,
 )
 from core.risk import RiskMode
 
 EDGE_MAP_PATH = Path("results/trade_edge_map.csv")
 OVERRIDE_PATH = Path(RISK_AGGRESSION_MAP_PATH)
 
-Combo = Tuple[str | None, str | None, str | None, str | None]
+Combo = Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]
 
-TIER_SCALE_DEFAULTS = {
-    "A": 1.5,
-    "B": 0.75,
-    "UNKNOWN": 0.5,
-    "C": 0.0,
+RISK_PROFILE_PRESETS = {
+    "FULL": {"A": 1.5, "B": 0.75, "UNKNOWN": 0.5, "C": 0.0},
+    "A_ONLY": {"A": 1.5, "B": 0.0, "UNKNOWN": 0.25, "C": 0.0},
+    "A_PLUS_UNKNOWN": {"A": 1.5, "B": 0.25, "UNKNOWN": 0.25, "C": 0.0},
 }
+
+TIER_SCALE_DEFAULTS = RISK_PROFILE_PRESETS["FULL"].copy()
+
+CUSTOM_TIER_SCALES: dict[str, float] | None = None
+_combo_cache: dict | None = None
+
+
+def set_custom_tier_scales(scales: dict[str, float] | None) -> None:
+    global CUSTOM_TIER_SCALES, _combo_cache
+    CUSTOM_TIER_SCALES = scales.copy() if scales else None
+    _combo_cache = None
+
+
+def _current_preset_name() -> str:
+    env_preset = os.environ.get("OMEGA_RISK_PRESET")
+    default = (RISK_PROFILE_PRESET or "FULL").upper()
+    preset = (env_preset or default).upper()
+    if preset not in RISK_PROFILE_PRESETS:
+        return "FULL"
+    return preset
+
+
+def _resolve_scales() -> dict[str, float]:
+    base = RISK_PROFILE_PRESETS[_current_preset_name()].copy()
+    env_a = os.environ.get("OMEGA_TIER_SCALE_A")
+    env_b = os.environ.get("OMEGA_TIER_SCALE_B")
+    env_unknown = os.environ.get("OMEGA_TIER_SCALE_UNKNOWN")
+    if env_a:
+        base["A"] = float(env_a)
+    if env_b:
+        base["B"] = float(env_b)
+    if env_unknown:
+        base["UNKNOWN"] = float(env_unknown)
+    if CUSTOM_TIER_SCALES:
+        base.update(CUSTOM_TIER_SCALES)
+    return base
 
 
 @dataclass(frozen=True)
@@ -65,6 +98,7 @@ def _combo_from_row(row: pd.Series) -> Combo:
 
 
 def _load_edge_map() -> Dict[Combo, ComboTier]:
+    tier_scales = _resolve_scales()
     combo_map: Dict[Combo, ComboTier] = {}
     if not EDGE_MAP_PATH.exists():
         return combo_map
@@ -95,7 +129,7 @@ def _load_edge_map() -> Dict[Combo, ComboTier]:
             continue
 
         combo = _combo_from_row(row)
-        combo_map[combo] = ComboTier(tier=tier, risk_scale=TIER_SCALE_DEFAULTS[tier])
+        combo_map[combo] = ComboTier(tier=tier, risk_scale=tier_scales[tier])
     return combo_map
 
 
@@ -113,19 +147,20 @@ def _load_override_map() -> Dict[Combo, ComboTier]:
         if not tier_value:
             continue
         tier_value = tier_value.upper()
-        if tier_value not in TIER_SCALE_DEFAULTS:
+        tier_scales = _resolve_scales()
+        if tier_value not in tier_scales:
             continue
         combo = _combo_from_row(row)
         if combo == (None, None, None, None):
             continue
         scale_value = row.get("risk_scale")
         if pd.isna(scale_value):
-            scale = TIER_SCALE_DEFAULTS[tier_value]
+            scale = tier_scales[tier_value]
         else:
             try:
                 scale = float(scale_value)
             except (TypeError, ValueError):
-                scale = TIER_SCALE_DEFAULTS[tier_value]
+                scale = tier_scales[tier_value]
         combo_map[combo] = ComboTier(tier=tier_value, risk_scale=scale)
     return combo_map
 
@@ -137,11 +172,16 @@ def _build_combo_map() -> Dict[Combo, ComboTier]:
     return combo_map
 
 
-COMBO_TIERS = _build_combo_map()
+def _get_combo_tiers() -> Dict[Combo, ComboTier]:
+    global _combo_cache
+    if _combo_cache is None:
+        _combo_cache = _build_combo_map()
+    return _combo_cache
 
 
 def _resolve_combo(tags: Combo) -> ComboTier:
-    tier_info = COMBO_TIERS.get(tags)
+    combo_map = _get_combo_tiers()
+    tier_info = combo_map.get(tags)
     if tier_info:
         return tier_info
     return ComboTier(tier="UNKNOWN", risk_scale=TIER_SCALE_DEFAULTS["UNKNOWN"])

@@ -1,0 +1,15 @@
+{
+  "preset": "FTMO_EVAL_PRESET",
+  "pass_rate": 0.675,
+  "mean_return": 0.07880173976752672,
+  "median_return": 0.09975148354159691,
+  "max_daily_loss": 0.02481233151602907,
+  "max_trailing_dd": 0.0732857591846586,
+  "mean_trades_per_run": 356.925,
+  "mean_trades_per_symbol": {
+    "USDJPY": 152.775,
+    "EURUSD": 203.475,
+    "GBPUSD": 202.025
+  },
+  "runs": 40
+}

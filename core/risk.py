@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Iterable, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - avoid circular imports
-    from config.settings import PropChallengeConfig
+    from config.settings import PropChallengeConfig, FirmProfile
     from core.backtest import ActivePosition
 
 
@@ -66,12 +66,14 @@ class RiskState:
         self,
         initial_equity: float,
         initial_mode: RiskMode = RiskMode.CONSERVATIVE,
+        firm_profile: "FirmProfile" | None = None,
     ) -> None:
         self.equity_peak = initial_equity
         self.current_equity = initial_equity
         self.start_of_day_equity = initial_equity
         self.current_mode = initial_mode
         self.trading_paused = False
+        self.firm_profile: "FirmProfile" | None = firm_profile
         self.internal_stop_out_triggered = False
         self.prop_fail_triggered = False
         self.internal_stop_timestamp: datetime | None = None
@@ -115,7 +117,12 @@ class RiskState:
             if self.prop_fail_timestamp is None and timestamp is not None:
                 self.prop_fail_timestamp = timestamp
 
-        if dd >= profile.max_trailing_dd_fraction:
+        internal_limit = (
+            self.firm_profile.internal_max_trailing_dd_fraction
+            if self.firm_profile is not None
+            else profile.max_trailing_dd_fraction
+        )
+        if dd >= internal_limit:
             self.internal_stop_out_triggered = True
             self.trading_paused = True
             if self.internal_stop_timestamp is None and timestamp is not None:
@@ -132,8 +139,14 @@ def can_open_new_trade(
     equity_start_of_day: float,
     profile: RiskProfile,
     challenge: "PropChallengeConfig",
+    firm_profile: "FirmProfile" | None = None,
 ) -> bool:
-    internal_daily_limit = profile.daily_loss_limit_fraction * equity_start_of_day
+    internal_fraction = (
+        firm_profile.internal_max_daily_loss_fraction
+        if firm_profile is not None
+        else profile.daily_loss_limit_fraction
+    )
+    internal_daily_limit = internal_fraction * equity_start_of_day
     prop_daily_limit = challenge.max_daily_loss_fraction * equity_start_of_day
     if internal_daily_limit - prop_daily_limit > 1e-9:
         raise ValueError("Internal daily limit exceeds prop firm daily cap.")

@@ -9,12 +9,21 @@ import pandas as pd
 
 from config.settings import (
     ChallengeConfig,
+    DEFAULT_BREAKOUT_CONFIG,
     DEFAULT_CHALLENGE,
     DEFAULT_CHALLENGE_CONFIG,
     DEFAULT_RISK_MODE,
     PropChallengeConfig,
 )
-from core.backtest import BacktestResult, DailyStats, BarEvent, build_event_stream, run_backtest
+from core.backtest import (
+    BacktestResult,
+    DailyStats,
+    SymbolFrameSet,
+    BarEvent,
+    _build_symbol_frame_sets,
+    build_event_stream,
+    run_backtest,
+)
 
 
 @dataclass
@@ -37,6 +46,7 @@ class ChallengeOutcome:
     start_timestamp: pd.Timestamp
     end_timestamp: pd.Timestamp
     max_observed_daily_loss_fraction: float
+    max_trailing_dd_fraction: float
     trades_per_symbol: Dict[str, int] = field(default_factory=dict)
 
 
@@ -89,21 +99,40 @@ def _daily_loss_fraction(stat: DailyStats) -> float:
 
 
 def _slice_symbol_map(
-    symbol_map: dict[str, pd.DataFrame],
+    symbol_map: dict[str, pd.DataFrame | dict[str, pd.DataFrame]],
     start_ts: pd.Timestamp,
     max_calendar_days: int | None,
-) -> dict[str, pd.DataFrame]:
+    *,
+    required_timeframes: set[str] | None = None,
+) -> dict[str, pd.DataFrame | dict[str, pd.DataFrame]]:
     end_ts = None
     if max_calendar_days:
         end_ts = start_ts + pd.Timedelta(days=max_calendar_days)
     sliced: dict[str, pd.DataFrame] = {}
     for symbol, df in symbol_map.items():
-        mask = df["timestamp"] >= start_ts
-        if end_ts is not None:
-            mask &= df["timestamp"] <= end_ts
-        subset = df.loc[mask].copy()
-        if not subset.empty:
-            sliced[symbol] = subset.reset_index(drop=True)
+        def _slice_df(frame: pd.DataFrame) -> pd.DataFrame | None:
+            mask = frame["timestamp"] >= start_ts
+            if end_ts is not None:
+                mask &= frame["timestamp"] <= end_ts
+            subset = frame.loc[mask].copy()
+            if subset.empty:
+                return None
+            return subset.reset_index(drop=True)
+
+        if isinstance(df, dict):
+            sliced_payload: dict[str, pd.DataFrame] = {}
+            for tf_name, frame in df.items():
+                subset = _slice_df(frame)
+                if subset is not None:
+                    sliced_payload[tf_name] = subset
+            if sliced_payload:
+                if required_timeframes and not required_timeframes.issubset({k.upper() for k in sliced_payload.keys()}):
+                    continue
+                sliced[symbol] = sliced_payload
+        else:
+            subset = _slice_df(df)
+            if subset is not None:
+                sliced[symbol] = subset
     return sliced
 
 
@@ -137,6 +166,7 @@ def _build_challenge_outcome(
             end_timestamp=pd.Timestamp(start_timestamp),
             max_observed_daily_loss_fraction=0.0,
             trades_per_symbol=backtest.trades_per_symbol,
+            max_trailing_dd_fraction=backtest.max_drawdown,
         )
 
     equity_index = equity_series.index
@@ -259,6 +289,7 @@ def _build_challenge_outcome(
         end_timestamp=end_timestamp,
         max_observed_daily_loss_fraction=max_obs_daily_loss,
         trades_per_symbol=backtest.trades_per_symbol,
+        max_trailing_dd_fraction=backtest.max_drawdown,
     )
 
 
@@ -269,6 +300,10 @@ def run_single_challenge(
     seed_index: int = 0,
     symbol_data_map: dict[str, pd.DataFrame] | None = None,
     event_stream: list[BarEvent] | None = None,
+    entry_mode: str | None = None,
+    firm_profile: str | None = None,
+    trading_firm: str | None = None,
+    account_phase: str | None = None,
 ) -> ChallengeOutcome:
     prop = prop_config or DEFAULT_CHALLENGE
 
@@ -278,7 +313,14 @@ def run_single_challenge(
         if seed_index >= len(event_stream):
             raise ValueError("Seed index exceeds event stream length.")
         start_event = event_stream[seed_index]
-        sliced_map = _slice_symbol_map(symbol_data_map, start_event.timestamp, challenge_config.max_calendar_days)
+        mode = (entry_mode or "H1_ONLY").upper()
+        required_tfs = {"M15"} if mode == "M15_WITH_H1_CTX" else None
+        sliced_map = _slice_symbol_map(
+            symbol_data_map,
+            start_event.timestamp,
+            challenge_config.max_calendar_days,
+            required_timeframes=required_tfs,
+        )
         if not sliced_map:
             raise ValueError("Insufficient data for challenge window.")
         backtest = run_backtest(
@@ -286,6 +328,10 @@ def run_single_challenge(
             starting_equity=challenge_config.start_equity,
             initial_mode=DEFAULT_RISK_MODE,
             challenge_config=prop,
+            entry_mode=entry_mode,
+            firm_profile=firm_profile,
+            trading_firm=trading_firm,
+            account_phase=account_phase,
         )
         return _build_challenge_outcome(
             backtest=backtest,
@@ -311,6 +357,10 @@ def run_single_challenge(
         starting_equity=challenge_config.start_equity,
         initial_mode=DEFAULT_RISK_MODE,
         challenge_config=prop,
+        entry_mode=entry_mode,
+        firm_profile=firm_profile,
+        trading_firm=trading_firm,
+        account_phase=account_phase,
     )
 
     return _build_challenge_outcome(
@@ -329,12 +379,17 @@ def run_challenge_sweep(
     prop_config: PropChallengeConfig | None = None,
     step: int = 500,
     symbol_data_map: dict[str, pd.DataFrame] | None = None,
+    entry_mode: str | None = None,
+    firm_profile: str | None = None,
+    trading_firm: str | None = None,
+    account_phase: str | None = None,
 ) -> list[ChallengeOutcome]:
     outcomes: list[ChallengeOutcome] = []
     prop = prop_config or DEFAULT_CHALLENGE
 
     if symbol_data_map is not None:
-        events = build_event_stream(symbol_data_map)
+        frame_sets = _frame_sets_from_map(symbol_data_map, entry_mode)
+        events = build_event_stream(frame_sets)
         for seed in range(0, len(events), step):
             try:
                 outcome = run_single_challenge(
@@ -344,8 +399,14 @@ def run_challenge_sweep(
                     seed_index=seed,
                     symbol_data_map=symbol_data_map,
                     event_stream=events,
+                    entry_mode=entry_mode,
+                    firm_profile=firm_profile,
+                    trading_firm=trading_firm,
+                    account_phase=account_phase,
                 )
-            except ValueError:
+            except ValueError as exc:
+                if "Insufficient data" in str(exc):
+                    continue
                 break
             outcomes.append(outcome)
         return outcomes
@@ -363,8 +424,29 @@ def run_challenge_sweep(
                 challenge_config=challenge_config,
                 prop_config=prop,
                 seed_index=seed,
+                entry_mode=entry_mode,
+                firm_profile=firm_profile,
+                trading_firm=trading_firm,
+                account_phase=account_phase,
             )
-        except ValueError:
+        except ValueError as exc:
+            if "Insufficient data" in str(exc):
+                continue
             break
         outcomes.append(outcome)
     return outcomes
+def _frame_sets_from_map(
+    symbol_data_map: dict[str, pd.DataFrame | dict[str, pd.DataFrame]],
+    entry_mode: str | None,
+) -> dict[str, SymbolFrameSet]:
+    # Challenge windows always seed off hourly bars so comparisons across entry
+    # modes share the same temporal spacing.
+    mode = "H1_ONLY"
+    return _build_symbol_frame_sets(
+        entry_mode=mode,
+        breakout_cfg=DEFAULT_BREAKOUT_CONFIG,
+        df=None,
+        data_source=None,
+        symbol_data_map=symbol_data_map,
+        symbols_config=None,
+    )

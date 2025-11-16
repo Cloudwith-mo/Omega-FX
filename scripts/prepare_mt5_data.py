@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -50,6 +51,16 @@ def _select_volume_column(df: pd.DataFrame) -> str:
     raise ValueError("Unable to locate volume/tick volume column in MT5 export.")
 
 
+def _infer_timeframe(path: Path, explicit: str | None) -> str:
+    if explicit:
+        return explicit.upper()
+    name = path.stem.upper()
+    match = re.search(r"_(H1|M15|H4)", name)
+    if match:
+        return match.group(1)
+    return "H1"
+
+
 def _normalize_mt5_csv(input_path: Path, symbol: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(input_path, sep=None, engine="python")
@@ -94,7 +105,7 @@ def _normalize_mt5_csv(input_path: Path, symbol: str) -> pd.DataFrame:
     return df
 
 
-def _validate_timeframe(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, str]:
+def _validate_timeframe(df: pd.DataFrame, timeframe: str) -> tuple[pd.Timestamp, pd.Timestamp, str]:
     start = pd.Timestamp(df["timestamp"].iloc[0])
     end = pd.Timestamp(df["timestamp"].iloc[-1])
     timeframe = "unknown"
@@ -102,8 +113,7 @@ def _validate_timeframe(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, s
         deltas = df["timestamp"].diff().dropna()
         if not deltas.empty:
             median_delta = deltas.median()
-            hours = median_delta / pd.Timedelta(hours=1)
-            timeframe = f"{hours:.2f}h"
+            timeframe = f"{median_delta}".replace("0 days ", "")
     return start, end, timeframe
 
 
@@ -118,6 +128,12 @@ def parse_args() -> argparse.Namespace:
         help="Destination for the normalized CSV (e.g. data/EURUSD_H1.csv).",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite the destination if it exists.")
+    parser.add_argument(
+        "--timeframe",
+        choices=["H1", "M15", "H4"],
+        default=None,
+        help="Optional timeframe hint; inferred from filename when omitted.",
+    )
     return parser.parse_args()
 
 
@@ -130,6 +146,7 @@ def main() -> int:
         print(f"[!] Output file already exists: {args.output}. Use --force to overwrite.")
         return 1
 
+    timeframe = _infer_timeframe(args.input, args.timeframe)
     try:
         df = _normalize_mt5_csv(args.input, args.symbol.upper())
     except ValueError as exc:
@@ -139,12 +156,14 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.output, index=False)
 
-    start, end, timeframe = _validate_timeframe(df)
+    start, end, median = _validate_timeframe(df, timeframe)
     print(
-        f"{args.symbol.upper()}: {len(df):,} bars saved to {args.output}. "
-        f"Range: {start} → {end} | Median step: {timeframe}"
+        f"{args.symbol.upper()} {timeframe}: {len(df):,} bars saved to {args.output}. "
+        f"Range: {start} → {end} | Median step: {median}"
     )
-    print("Note: ensure your MT5 export timeframe is H1; adjust timestamps to UTC if needed.")
+    print(
+        f"Note: ensure your MT5 export timeframe matches {timeframe} and timestamps are UTC or adjusted accordingly."
+    )
     return 0
 
 

@@ -1,0 +1,10 @@
+{
+  "firm": "fundednext",
+  "profile_name": "FUNDEDNEXT_EVAL_DEFAULT",
+  "pass_rate": 0.625,
+  "mean_return": 0.06205183477823341,
+  "median_return": 0.09627403317606564,
+  "max_daily_loss": 0.02184875540337614,
+  "max_trailing_dd": 0.060260903282304774,
+  "mean_trades_per_run": 250.5
+}

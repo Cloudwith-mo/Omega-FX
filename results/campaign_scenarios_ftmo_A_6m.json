@@ -1,0 +1,46 @@
+{
+  "strategy": "A",
+  "horizon_months": 6,
+  "simulations": 20000,
+  "mean_total_payout": 16472.689621768404,
+  "median_total_payout": 15270.30891813793,
+  "p10_total_payout": 4054.760147142704,
+  "p90_total_payout": 30507.66631025965,
+  "prob_total_ge_10k": 0.69765,
+  "prob_total_ge_50k": 0.0025,
+  "prob_total_ge_100k": 0.0,
+  "prob_no_payout": 0.0181,
+  "prob_any_account_death": 0.0,
+  "mean_monthly_payouts": [
+    0.0,
+    1778.17,
+    3021.2,
+    5476.04,
+    4122.39,
+    2074.9
+  ],
+  "median_monthly_payouts": [
+    0.0,
+    716.0,
+    2435.66,
+    4408.31,
+    3354.91,
+    1029.22
+  ],
+  "mean_cumulative_payouts": [
+    0.0,
+    1778.17,
+    4799.36,
+    10275.4,
+    14397.79,
+    16472.69
+  ],
+  "median_cumulative_payouts": [
+    0.0,
+    716.0,
+    3930.4,
+    8670.81,
+    13147.7,
+    15270.31
+  ]
+}
