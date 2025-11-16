@@ -1,0 +1,9 @@
+profiles:
+  METAQUOTES_DEMO:
+    server: MetaQuotes-Demo
+    description: "MetaQuotes platform demo account"
+    default_symbol: EURUSD
+  FTMO_TRIAL:
+    server: OANDA-Demo-1
+    description: "FTMO free trial (OANDA/OANDA-Demo-1 feed)"
+    default_symbol: EURUSD
