@@ -2,6 +2,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .ipynb_checkpoints/
+config/mt5_accounts.yaml
 outputs/
 results/*
 !results/

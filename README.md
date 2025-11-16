@@ -50,6 +50,8 @@ Phase 1 delivers a conservative EUR/USD backtesting core: risk controls, sizing,
 - [Plan B Operator Guide](docs/PLAN_B_OPERATOR_GUIDE.md)
 - [Strategy Lifecycle](docs/STRATEGY_LIFECYCLE.md)
 - [FTMO Trial Field-Test Kit](docs/LIVE_TEST_FTMO_TRIAL.md)
+- [Execution Playbook](docs/EXECUTION_PLAYBOOK.md)
+- [MT5 Demo Execution Guide](docs/EXECUTION_MT5_DEMO.md)
 - Minimal FTMO preset: `python scripts/run_minimal_ftmo_eval.py --step 10000`
 - Capital plan sim: `python scripts/run_capital_plan_sim.py --months 12 --evals_per_wave 4 --waves_per_month 1 --eval_fee 300 --initial_bankroll 1000 --risk_budget_fraction 0.6 --reinvest_fraction 0.2 --eval_runs results/minimal_ftmo_eval_runs.csv --funded_runs results/funded_payout_ftmo_12m_runs.csv --funded_horizon_months 12 --output results/capital_plan_ftmo_12m.json`
 - Live vs Sim analyzer: `python scripts/analyze_live_vs_sim.py --live_trades_csv data/live/ftmo_trial_sample.csv --sim_runs_csv results/minimal_ftmo_eval_runs.csv`
