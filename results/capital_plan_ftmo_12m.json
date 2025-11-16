@@ -1,0 +1,21 @@
+{
+  "firm": "FTMO_CHALLENGE",
+  "months": 12,
+  "evals_per_wave": 4,
+  "waves_per_month": 1,
+  "eval_fee": 300.0,
+  "initial_bankroll": 1000.0,
+  "risk_budget": 1000.0,
+  "reinvest_fraction": 0.2,
+  "simulations": 20000,
+  "mean_total_payout": 176865.92068317684,
+  "median_total_payout": 175305.93157688735,
+  "p10_total_payout": 131412.76533993962,
+  "p90_total_payout": 224651.40931343217,
+  "prob_total_ge_10k": 1.0,
+  "prob_total_ge_25k": 1.0,
+  "prob_total_ge_50k": 1.0,
+  "prob_any_bankroll_breach": 1.0,
+  "median_months_to_5k": 3.0,
+  "median_months_to_10k": 3.0
+}

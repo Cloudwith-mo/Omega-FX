@@ -1,0 +1,29 @@
+{
+  "firm": "fundednext",
+  "months": 12,
+  "account_size": 100000.0,
+  "payout_split": 0.7,
+  "payout_interval_days": 20,
+  "ratchet_fraction": 0.05,
+  "summary": {
+    "num_runs": 18,
+    "passive_survival_rate": 0.8333333333333334,
+    "prob_account_death": 0.16666666666666663,
+    "avg_total_payout": 10097.019970994837,
+    "median_total_payout": 8083.856068385716,
+    "p10_total_payout": 331.83403427157094,
+    "p90_total_payout": 19681.21141331889,
+    "prob_at_least_one_payout": 0.8888888888888888,
+    "prob_total_payout_ge_10k": 0.3333333333333333,
+    "prob_total_payout_ge_20k": 0.1111111111111111,
+    "prob_total_payout_ge_50k": 0.0,
+    "p_at_least_one_payout_ge_5k": 0.05555555555555555,
+    "mean_time_to_first_payout_days": 22.75,
+    "median_time_to_first_payout_days": 20.0,
+    "payout_rate_per_run": 5.611111111111111,
+    "max_daily_loss_observed": 0.019815842928860086,
+    "max_trailing_dd_observed": 0.050829565609413194,
+    "mean_monthly_payout": 841.4183309162364,
+    "median_monthly_payout": 673.6546723654764
+  }
+}

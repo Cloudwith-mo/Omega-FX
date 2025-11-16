@@ -40,6 +40,32 @@ Phase 1 delivers a conservative EUR/USD backtesting core: risk controls, sizing,
 - `notebooks/`: future exploratory notebooks.
 - `outputs/`: generated artifacts (gitignored).
 
+## Philosophy & Playbooks
+
+- [Ω-FX Trading Philosophy](docs/OMEGA_TRADING_PHILOSOPHY.md)
+- [Evaluation Playbook](docs/EVAL_PLAYBOOK.md)
+- [Funded Playbook](docs/FUNDED_PLAYBOOK.md)
+- [Firm Comparison & Campaign Notes](docs/FIRM_COMPARISON.md)
+- [Capital Plan Scenarios](docs/CAPITAL_PLAN_SCENARIOS.md)
+- [Plan B Operator Guide](docs/PLAN_B_OPERATOR_GUIDE.md)
+- [Strategy Lifecycle](docs/STRATEGY_LIFECYCLE.md)
+- [FTMO Trial Field-Test Kit](docs/LIVE_TEST_FTMO_TRIAL.md)
+- Minimal FTMO preset: `python scripts/run_minimal_ftmo_eval.py --step 10000`
+- Capital plan sim: `python scripts/run_capital_plan_sim.py --months 12 --evals_per_wave 4 --waves_per_month 1 --eval_fee 300 --initial_bankroll 1000 --risk_budget_fraction 0.6 --reinvest_fraction 0.2 --eval_runs results/minimal_ftmo_eval_runs.csv --funded_runs results/funded_payout_ftmo_12m_runs.csv --funded_horizon_months 12 --output results/capital_plan_ftmo_12m.json`
+- Live vs Sim analyzer: `python scripts/analyze_live_vs_sim.py --live_trades_csv data/live/ftmo_trial_sample.csv --sim_runs_csv results/minimal_ftmo_eval_runs.csv`
+
+## Sanity Check (before touching real accounts)
+
+Run these two commands to ensure the strategy + simulator are healthy:
+
+```bash
+source .venv/bin/activate
+python scripts/run_minimal_ftmo_eval.py --step 10000
+python scripts/run_ftmo_eval_sim.py --step 2000
+```
+
+They should reproduce the ~70 % pass-rate / <4 % max DD baseline referenced in the playbooks.
+
 ## Requirements
 
 ```bash

@@ -26,6 +26,7 @@ def _build_symbol_df(name: str, start_price: float) -> pd.DataFrame:
 
 
 def test_portfolio_enforces_single_position(monkeypatch) -> None:
+    monkeypatch.setenv("OMEGA_MAX_CONCURRENT_POSITIONS", "1")
     symbol_data = {
         "EURUSD": _build_symbol_df("EURUSD", 1.10),
         "GBPUSD": _build_symbol_df("GBPUSD", 1.30),

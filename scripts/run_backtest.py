@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover - path hack for CLI usage
 
 import pandas as pd
 
-from config.settings import DEFAULT_DATA_PATH
+from config.settings import ACCOUNT_PHASE_PROFILES, DEFAULT_DATA_PATH, DEFAULT_TRADING_FIRM, FIRM_PROFILES
 from core.backtest import REQUIRED_COLUMNS, run_backtest
 
 try:  # pragma: no cover
@@ -58,6 +58,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override entry mode (default from config).",
     )
+    parser.add_argument(
+        "--firm_profile",
+        choices=sorted(FIRM_PROFILES.keys()),
+        default=None,
+        help="Override firm profile (internal risk caps).",
+    )
+    parser.add_argument(
+        "--trading_firm",
+        choices=sorted(ACCOUNT_PHASE_PROFILES.keys()),
+        default=None,
+        help="Name of trading firm to use when selecting account-phase presets.",
+    )
+    parser.add_argument(
+        "--account_phase",
+        choices=["EVAL", "FUNDED"],
+        default=None,
+        help="Optional account phase preset. When set, overrides entry mode, tier scales, and firm profile.",
+    )
     return parser.parse_args()
 
 
@@ -87,6 +105,9 @@ def main() -> int:
             data_source=data_source,
             symbol_data_map=symbol_data,
             entry_mode=args.entry_mode,
+            firm_profile=args.firm_profile,
+            trading_firm=args.trading_firm or DEFAULT_TRADING_FIRM,
+            account_phase=args.account_phase,
         )
     except ValueError as exc:
         print(f"[!] Backtest aborted: {exc}")
@@ -127,6 +148,7 @@ def main() -> int:
         "tier_expectancy": result.tier_expectancy,
         "tier_trades_per_year": result.tier_trades_per_year,
         "trades_per_symbol": result.trades_per_symbol,
+        "open_position_histogram": result.open_position_histogram,
     }
 
     print("\n===== BACKTEST SUMMARY =====")
@@ -174,6 +196,10 @@ def main() -> int:
         print("Trades per symbol:")
         for symbol, count in metrics["trades_per_symbol"].items():
             print(f"  {symbol:<8} -> {count}")
+    if metrics["open_position_histogram"]:
+        print("Open position histogram:")
+        for count, occurrences in sorted(metrics["open_position_histogram"].items()):
+            print(f"  {count} positions -> {occurrences}")
     pre_risk = result.pre_risk_combo_counts
     top_combos = sorted(pre_risk.items(), key=lambda kv: kv[1], reverse=True)[:5]
     if top_combos:

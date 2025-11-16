@@ -301,6 +301,9 @@ def run_single_challenge(
     symbol_data_map: dict[str, pd.DataFrame] | None = None,
     event_stream: list[BarEvent] | None = None,
     entry_mode: str | None = None,
+    firm_profile: str | None = None,
+    trading_firm: str | None = None,
+    account_phase: str | None = None,
 ) -> ChallengeOutcome:
     prop = prop_config or DEFAULT_CHALLENGE
 
@@ -326,6 +329,9 @@ def run_single_challenge(
             initial_mode=DEFAULT_RISK_MODE,
             challenge_config=prop,
             entry_mode=entry_mode,
+            firm_profile=firm_profile,
+            trading_firm=trading_firm,
+            account_phase=account_phase,
         )
         return _build_challenge_outcome(
             backtest=backtest,
@@ -352,6 +358,9 @@ def run_single_challenge(
         initial_mode=DEFAULT_RISK_MODE,
         challenge_config=prop,
         entry_mode=entry_mode,
+        firm_profile=firm_profile,
+        trading_firm=trading_firm,
+        account_phase=account_phase,
     )
 
     return _build_challenge_outcome(
@@ -371,6 +380,9 @@ def run_challenge_sweep(
     step: int = 500,
     symbol_data_map: dict[str, pd.DataFrame] | None = None,
     entry_mode: str | None = None,
+    firm_profile: str | None = None,
+    trading_firm: str | None = None,
+    account_phase: str | None = None,
 ) -> list[ChallengeOutcome]:
     outcomes: list[ChallengeOutcome] = []
     prop = prop_config or DEFAULT_CHALLENGE
@@ -388,6 +400,9 @@ def run_challenge_sweep(
                     symbol_data_map=symbol_data_map,
                     event_stream=events,
                     entry_mode=entry_mode,
+                    firm_profile=firm_profile,
+                    trading_firm=trading_firm,
+                    account_phase=account_phase,
                 )
             except ValueError as exc:
                 if "Insufficient data" in str(exc):
@@ -410,6 +425,9 @@ def run_challenge_sweep(
                 prop_config=prop,
                 seed_index=seed,
                 entry_mode=entry_mode,
+                firm_profile=firm_profile,
+                trading_firm=trading_firm,
+                account_phase=account_phase,
             )
         except ValueError as exc:
             if "Insufficient data" in str(exc):

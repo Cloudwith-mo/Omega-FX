@@ -1,0 +1,2 @@
+strategy,horizon_months,mean_total_payout,median_total_payout,p10_total_payout,p90_total_payout,prob_total_ge_10k,prob_total_ge_50k,prob_total_ge_100k,prob_no_payout,prob_any_account_death
+B,6,15406.121845387706,13870.472054038295,3457.79548199823,29478.93434896674,0.65065,0.0046,0.0,0.0187,0.0
