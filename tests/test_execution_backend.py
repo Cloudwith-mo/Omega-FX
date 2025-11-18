@@ -77,9 +77,11 @@ class DummyMT5:
     ORDER_FILLING_FOK = 0
     ORDER_TIME_GTC = 0
     TRADE_RETCODE_DONE = 0
+    TRADE_RETCODE_INVALID_STOPS = 10016
 
     def __init__(self) -> None:
         self.logged_in = False
+        self.order_result = SimpleNamespace(retcode=0, order=1, comment="ok")
 
     def initialize(self) -> bool:
         return True
@@ -98,10 +100,13 @@ class DummyMT5:
         return []
 
     def symbol_info_tick(self, symbol):
-        return type("Tick", (), {"bid": 1.0, "ask": 1.0})()
+        return SimpleNamespace(bid=1.1, ask=1.1)
+
+    def symbol_info(self, symbol):
+        return SimpleNamespace(trade_stops_level=0, point=0.0001)
 
     def order_send(self, request):
-        return type("Result", (), {"retcode": 0, "order": 1, "comment": "ok"})()
+        return self.order_result
 
     def last_error(self):
         return (0, "ok")
@@ -153,8 +158,42 @@ def test_mt5_backend_daily_loss(monkeypatch, tmp_path: Path) -> None:
     )
     ticket = backend.submit_order(spec)
     backend.close_position(ticket, "loss", close_price=1.0950)
-    with pytest.raises(RuntimeError):
-        backend.submit_order(spec)
+    rejected = backend.submit_order(spec)
+    assert rejected is None
+    assert backend.last_limit_reason == "daily_loss"
+    assert backend.summary()["filtered_daily_loss"] == 1
+
+
+def test_mt5_backend_invalid_stops_filtered(monkeypatch, tmp_path: Path) -> None:
+    dummy = DummyMT5()
+    dummy.order_result = SimpleNamespace(
+        retcode=dummy.TRADE_RETCODE_INVALID_STOPS,
+        order=0,
+        comment="invalid stops",
+    )
+    monkeypatch.setattr("execution_backends.mt5_demo.mt5", dummy)
+    backend = Mt5DemoExecutionBackend(
+        login=1,
+        password="x",
+        server="demo",
+        dry_run=False,
+        log_path=tmp_path / "log3.csv",
+        summary_path=tmp_path / "summary3.json",
+    )
+    backend.connect()
+    spec = OrderSpec(
+        symbol="EURUSD",
+        direction="long",
+        volume=0.1,
+        entry_price=1.1000,
+        stop_loss=1.0990,
+        take_profit=1.1010,
+    )
+    rejected = backend.submit_order(spec)
+    assert rejected is None
+    assert backend.last_limit_reason == "invalid_stops"
+    summary = backend.summary()
+    assert summary["filtered_invalid_stops"] == 1
 
 
 def test_account_loader_merges(tmp_path: Path) -> None:
@@ -193,8 +232,9 @@ class _FakeBackend:
 
 
 class _FailingBackend(_FakeBackend):
-    def submit_order(self, order: OrderSpec) -> str:
-        raise RuntimeError("Daily loss limit breached.")
+    def submit_order(self, order: OrderSpec) -> str | None:
+        self.last_limit_reason = "daily_loss"
+        return None
 
 
 def test_smoketest_dry_run(monkeypatch) -> None:
@@ -234,5 +274,5 @@ def test_smoketest_handles_daily_loss(monkeypatch) -> None:
         hold_seconds=0.0,
     )
     summary = perform_smoketest(account, args, backend_cls=_FailingBackend)
-    assert summary["error"] is not None
+    assert summary["error"] and "filtered" in summary["error"]
     assert summary["order_sent"] is False

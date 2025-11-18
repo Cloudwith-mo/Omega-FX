@@ -111,6 +111,9 @@ def perform_smoketest(account, args: argparse.Namespace, backend_cls=Mt5DemoExec
             tag="SMOKE_TEST",
         )
         ticket = backend.submit_order(order)
+        if not ticket:
+            summary["error"] = f"Order filtered: {getattr(backend, 'last_limit_reason', 'unknown')}"
+            return summary
         summary["order_sent"] = True
         if not args.dry_run:
             time.sleep(max(0.0, args.hold_seconds))

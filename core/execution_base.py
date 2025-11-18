@@ -43,6 +43,8 @@ class ExecutionPosition:
 class ExecutionBackend(ABC):
     """Abstract execution provider."""
 
+    last_limit_reason: str | None = None
+
     @abstractmethod
     def connect(self) -> None:
         """Establish connection to downstream execution venue."""
@@ -56,8 +58,8 @@ class ExecutionBackend(ABC):
         """Return the list of open positions known to the backend."""
 
     @abstractmethod
-    def submit_order(self, order: OrderSpec) -> str:
-        """Submit a new order and return a ticket identifier."""
+    def submit_order(self, order: OrderSpec) -> str | None:
+        """Submit a new order and return a ticket identifier. Returns None if filtered."""
 
     @abstractmethod
     def close_position(

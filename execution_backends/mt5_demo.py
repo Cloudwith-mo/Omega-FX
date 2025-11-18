@@ -46,6 +46,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.daily_realized = 0.0
         self.trade_records: list[dict] = []
         self.connected = False
+        self.filter_counters: dict[str, int] = {"max_positions": 0, "daily_loss": 0, "invalid_stops": 0}
+        self.last_limit_reason: str | None = None
 
     # ------------------------------------------------------------------ API ---
 
@@ -95,20 +97,37 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             )
         return synced
 
-    def submit_order(self, order: OrderSpec) -> str:
+    def submit_order(self, order: OrderSpec) -> str | None:
         self._ensure_ready()
-        self._enforce_limits(order)
-        entry_price = float(order.entry_price or self._current_price(order.symbol))
-        stop_loss = order.stop_loss
-        if stop_loss is None:
-            raise RuntimeError("MT5 backend requires stop loss for every order.")
+        if order.stop_loss is None:
+            raise RuntimeError("MT5 backend requires stop-loss price.")
+        historical_entry = float(order.entry_price or self._current_price(order.symbol, order.direction))
+        entry_price = historical_entry
+        stop_loss = float(order.stop_loss)
+        take_profit = float(order.take_profit) if order.take_profit is not None else None
+        if not self.dry_run:
+            entry_price, stop_loss, take_profit = self._realign_live_prices(
+                order, historical_entry, stop_loss, take_profit
+            )
         risk_amount = self._risk_amount(order.symbol, entry_price, stop_loss, order.volume)
+        self.last_limit_reason = None
+        max_risk = self.per_trade_risk_fraction * self.daily_start_equity
+        if risk_amount > max_risk:
+            raise RuntimeError("Per-trade risk limit exceeded.")
+        limit_reason = self._limit_reason(risk_amount)
+        if limit_reason:
+            self._record_filtered_event(order, entry_price, stop_loss, take_profit, risk_amount, limit_reason)
+            return None
         ticket = f"MT5-{uuid.uuid4().hex[:10]}"
         timestamp = order.timestamp or datetime.now(timezone.utc)
         if not self.dry_run:
-            request = self._build_order_request(order, entry_price, stop_loss)
+            request = self._build_order_request(order, entry_price, stop_loss, take_profit)
             result = mt5.order_send(request)
-            if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
+            retcode = getattr(result, "retcode", None) if result is not None else None
+            if retcode in (getattr(mt5, "TRADE_RETCODE_INVALID_STOPS", 10016), 10016):
+                self._record_filtered_event(order, entry_price, stop_loss, take_profit, risk_amount, "invalid_stops")
+                return None
+            if result is None or retcode != mt5.TRADE_RETCODE_DONE:
                 raise RuntimeError(f"MT5 order_send failed: {result}")
             ticket = str(getattr(result, "order", ticket))
         position = ExecutionPosition(
@@ -118,7 +137,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             volume=order.volume,
             entry_price=entry_price,
             stop_loss=stop_loss,
-            take_profit=order.take_profit,
+            take_profit=take_profit,
             opened_at=timestamp,
             tag=order.tag,
             max_loss_amount=risk_amount,
@@ -172,37 +191,133 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         if not self.connected:
             raise RuntimeError("MT5 backend not connected.")
 
-    def _enforce_limits(self, order: OrderSpec) -> None:
+    def _limit_reason(self, risk_amount: float) -> str | None:
         if len(self.positions) >= self.max_positions:
-            raise RuntimeError("Max open positions exceeded.")
-        if order.stop_loss is None or order.entry_price is None:
-            raise RuntimeError("Orders must include entry and stop-loss prices.")
-        risk_amount = self._risk_amount(order.symbol, order.entry_price, order.stop_loss, order.volume)
-        max_risk = self.per_trade_risk_fraction * self.daily_start_equity
-        if risk_amount > max_risk:
-            raise RuntimeError("Per-trade risk limit exceeded.")
+            return "max_positions"
         worst_case_loss = max(0.0, -self.daily_realized)
         for pos in self.positions.values():
             worst_case_loss += pos.max_loss_amount
         projected = worst_case_loss + risk_amount
         if projected > (self.daily_loss_fraction * self.daily_start_equity):
-            raise RuntimeError("Daily loss limit breached.")
+            return "daily_loss"
+        return None
+
+    def _realign_live_prices(
+        self,
+        order: OrderSpec,
+        historical_entry: float,
+        stop_loss: float,
+        take_profit: float | None,
+    ) -> tuple[float, float, float | None]:
+        live_entry = self._current_price(order.symbol, order.direction)
+        stop_offset = stop_loss - historical_entry
+        take_profit_offset = take_profit - historical_entry if take_profit is not None else None
+        adjusted_stop = live_entry + stop_offset
+        adjusted_tp = live_entry + take_profit_offset if take_profit_offset is not None else None
+        adjusted_stop, adjusted_tp = self._respect_min_stop_distance(
+            order.symbol,
+            order.direction,
+            live_entry,
+            adjusted_stop,
+            adjusted_tp,
+        )
+        return live_entry, adjusted_stop, adjusted_tp
+
+    def _respect_min_stop_distance(
+        self,
+        symbol: str,
+        direction: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float | None,
+    ) -> tuple[float, float | None]:
+        min_distance = self._min_stop_distance(symbol)
+        buffer = max(min_distance, 1e-6)
+        if direction == "long":
+            if stop_loss >= entry_price - buffer:
+                stop_loss = entry_price - buffer
+            if min_distance > 0 and (entry_price - stop_loss) < min_distance:
+                stop_loss = entry_price - min_distance
+            stop_loss = max(0.0, stop_loss)
+            if take_profit is not None:
+                if take_profit <= entry_price + buffer:
+                    take_profit = entry_price + buffer
+                if min_distance > 0 and (take_profit - entry_price) < min_distance:
+                    take_profit = entry_price + min_distance
+        else:
+            if stop_loss <= entry_price + buffer:
+                stop_loss = entry_price + buffer
+            if min_distance > 0 and (stop_loss - entry_price) < min_distance:
+                stop_loss = entry_price + min_distance
+            if take_profit is not None:
+                if take_profit >= entry_price - buffer:
+                    take_profit = entry_price - buffer
+                if min_distance > 0 and (entry_price - take_profit) < min_distance:
+                    take_profit = entry_price - min_distance
+                take_profit = max(0.0, take_profit)
+        return stop_loss, take_profit
+
+    def _min_stop_distance(self, symbol: str) -> float:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return 0.0
+        point = float(getattr(info, "point", 0.0) or 0.0)
+        level = float(getattr(info, "trade_stops_level", 0.0) or 0.0)
+        return point * level
+
+    def _record_filtered_event(
+        self,
+        order: OrderSpec,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float | None,
+        risk_amount: float,
+        reason: str,
+    ) -> None:
+        self.last_limit_reason = reason
+        self.filter_counters[reason] = self.filter_counters.get(reason, 0) + 1
+        timestamp = order.timestamp or datetime.now(timezone.utc)
+        pseudo_position = ExecutionPosition(
+            ticket=f"FILTER-{reason}-{uuid.uuid4().hex[:8]}",
+            symbol=order.symbol.upper(),
+            direction=order.direction,
+            volume=order.volume,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            opened_at=timestamp,
+            tag=order.tag,
+            max_loss_amount=risk_amount,
+        )
+        self._log_event(timestamp, "FILTER", pseudo_position, entry_price, reason)
 
     def _risk_amount(self, symbol: str, entry: float, stop: float, volume: float) -> float:
         meta = get_symbol_meta(symbol)
         pip_distance = abs(entry - stop) / meta.pip_size
         return pip_distance * meta.pip_value_per_standard_lot * volume
 
-    def _current_price(self, symbol: str) -> float:
+    def _current_price(self, symbol: str, direction: str | None = None) -> float:
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
             raise RuntimeError(f"MT5 symbol_info_tick returned None for {symbol}")
-        price = getattr(tick, "bid", None) or getattr(tick, "ask", None)
+        price = None
+        if direction == "long":
+            price = getattr(tick, "ask", None)
+        elif direction == "short":
+            price = getattr(tick, "bid", None)
+        if price is None:
+            price = getattr(tick, "bid", None) or getattr(tick, "ask", None)
         if price is None:
             raise RuntimeError("MT5 tick data missing bid/ask.")
         return float(price)
 
-    def _build_order_request(self, order: OrderSpec, price: float, stop_loss: float) -> dict:
+    def _build_order_request(
+        self,
+        order: OrderSpec,
+        price: float,
+        stop_loss: float,
+        take_profit: float | None,
+    ) -> dict:
         order_type = mt5.ORDER_TYPE_BUY if order.direction == "long" else mt5.ORDER_TYPE_SELL
         return {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -211,7 +326,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "type": order_type,
             "price": price,
             "sl": stop_loss,
-            "tp": order.take_profit,
+            "tp": take_profit,
             "deviation": 10,
             "magic": 0,
             "comment": order.tag,
@@ -285,4 +400,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "per_trade_risk_fraction": self.per_trade_risk_fraction,
             "daily_loss_fraction": self.daily_loss_fraction,
             "daily_realized_loss": daily_loss,
+            "filtered_max_positions": self.filter_counters.get("max_positions", 0),
+            "filtered_daily_loss": self.filter_counters.get("daily_loss", 0),
+            "filtered_invalid_stops": self.filter_counters.get("invalid_stops", 0),
         }

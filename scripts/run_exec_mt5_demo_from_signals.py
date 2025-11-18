@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_positions", type=int, default=2)
     parser.add_argument("--per_trade_risk_fraction", type=float, default=0.004)
     parser.add_argument("--daily_loss_fraction", type=float, default=0.02)
+    parser.add_argument(
+        "--risk_fraction",
+        type=float,
+        default=1.0,
+        help="Multiplier applied on top of the firm profile risk fraction.",
+    )
     parser.add_argument("--summary_path", type=Path, default=Path("results/mt5_demo_exec_summary.json"))
     parser.add_argument("--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv"))
     parser.add_argument("--limit_trades", type=int, default=None, help="Optional cap on trade count.")
@@ -52,8 +58,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
+def run_exec_once(args: argparse.Namespace) -> dict:
     account = resolve_account_config(
         args.account_profile,
         login=args.login,
@@ -94,12 +99,15 @@ def main() -> int:
 
     tickets: dict[int, str] = {}
     closed = 0
+    filtered_counts = {"max_positions": 0, "daily_loss": 0, "invalid_stops": 0}
     try:
         for timestamp, kind, trade_id, trade in events:
             if kind == "open":
-                ticket = _submit_from_trade(backend, trade, timestamp)
+                ticket = _submit_from_trade(backend, trade, timestamp, args.risk_fraction)
                 if ticket:
                     tickets[trade_id] = ticket
+                else:
+                    _update_filtered_counts(backend, filtered_counts)
             else:
                 ticket = tickets.get(trade_id)
                 if ticket:
@@ -115,14 +123,31 @@ def main() -> int:
     finally:
         backend.disconnect()
 
-    print(json.dumps(backend.summary(), indent=2))
+    summary = backend.summary()
+    summary["filtered_max_positions"] = max(summary.get("filtered_max_positions", 0), filtered_counts["max_positions"])
+    summary["filtered_daily_loss"] = max(summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"])
+    summary["filtered_invalid_stops"] = max(
+        summary.get("filtered_invalid_stops", 0), filtered_counts["invalid_stops"]
+    )
+    return summary
+
+
+def main() -> int:
+    args = parse_args()
+    summary = run_exec_once(args)
+    print(json.dumps(summary, indent=2))
     return 0
 
 
-def _submit_from_trade(backend: Mt5DemoExecutionBackend, trade: dict, timestamp) -> str | None:
+def _submit_from_trade(
+    backend: Mt5DemoExecutionBackend,
+    trade: dict,
+    timestamp,
+    risk_fraction_override: float,
+) -> str | None:
     risk_mode = RiskMode(trade["risk_mode_at_entry"])
     base_fraction = RISK_PROFILES[risk_mode].risk_per_trade_fraction
-    risk_fraction = base_fraction * float(trade.get("risk_scale", 1.0))
+    risk_fraction = base_fraction * float(trade.get("risk_scale", 1.0)) * risk_fraction_override
     if risk_fraction <= 0:
         return None
     try:
@@ -152,6 +177,12 @@ def _to_datetime(value) -> pd.Timestamp:
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime()
     return pd.to_datetime(value).to_pydatetime()
+
+
+def _update_filtered_counts(backend: Mt5DemoExecutionBackend, counters: dict[str, int]) -> None:
+    reason = getattr(backend, "last_limit_reason", None)
+    if reason in counters:
+        counters[reason] += 1
 
 
 if __name__ == "__main__":
