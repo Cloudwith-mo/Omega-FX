@@ -20,8 +20,8 @@ if REPO_ROOT not in sys.path:  # pragma: no cover - CLI entry
 from core.monitoring_helpers import (  # noqa: E402
     DEFAULT_LOG_PATH,
     DEFAULT_SUMMARY_PATH,
+    build_report_payload,
     build_status_payload,
-    compute_report_stats,
 )
 from scripts.query_last_trades import load_trades  # noqa: E402
 from scripts.run_daily_exec_report import read_latest_session_id  # noqa: E402
@@ -57,21 +57,32 @@ def _metric_variant(value: float) -> str:
     return "neutral"
 
 
-def _strategy_breakdown_df(data: dict[str, Any] | None) -> pd.DataFrame:
+def _strategy_breakdown_df(data: Any) -> pd.DataFrame:
+    columns = ["strategy_id", "family", "trades", "wins", "losses", "win_rate", "pnl", "avg_pnl"]
     if not data:
-        return pd.DataFrame(columns=["strategy_id", "trades", "win_rate", "pnl", "avg_pnl_per_trade"])
+        return pd.DataFrame(columns=columns)
     rows: list[dict[str, Any]] = []
-    for strategy_id, entry in data.items():
+    if isinstance(data, dict):
+        iterable = list(data.items())
+    else:
+        iterable = [(entry.get("strategy_id"), entry) for entry in data]
+    for strategy_id, entry in iterable:
+        if not strategy_id:
+            continue
+        win_rate = float(entry.get("win_rate", 0.0) or 0.0) * 100
         rows.append(
             {
                 "strategy_id": strategy_id,
+                "family": entry.get("family", "-"),
                 "trades": int(entry.get("trades", 0) or 0),
-                "win_rate": float(entry.get("win_rate", 0.0) or 0.0) * 100,
+                "wins": int(entry.get("wins", 0) or 0),
+                "losses": int(entry.get("losses", 0) or 0),
+                "win_rate": win_rate,
                 "pnl": float(entry.get("pnl", 0.0) or 0.0),
-                "avg_pnl_per_trade": float(entry.get("avg_pnl_per_trade", 0.0) or 0.0),
+                "avg_pnl": float(entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0),
             }
         )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _apply_theme() -> None:
@@ -167,7 +178,7 @@ def _render_details_section(
 
         st.markdown("### Sim vs Live")
         live_win = report_stats.get("win_rate", 0.0)
-        live_trades = report_stats.get("trades", 0)
+        live_trades = report_stats.get("closed_trades", report_stats.get("trades", 0))
         live_avg_pnl = report_stats.get("pnl", 0.0) / live_trades if live_trades else 0.0
         comparison = pd.DataFrame(
             [
@@ -255,9 +266,10 @@ def main() -> None:
         summary_path=DEFAULT_SUMMARY_PATH,
         include_historical=include_historical,
     )
-    report_stats = compute_report_stats(
+    report_stats = build_report_payload(
         hours=24.0,
         log_path=DEFAULT_LOG_PATH,
+        summary_path=DEFAULT_SUMMARY_PATH,
         session_id=target_session if session_only else None,
         session_only=session_only,
         include_historical=include_historical,

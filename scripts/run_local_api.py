@@ -22,8 +22,6 @@ from core.monitoring_helpers import (  # noqa: E402
     DEFAULT_SUMMARY_PATH,
     build_report_payload,
     build_status_payload,
-    compute_report_stats,
-    serialize_trades,
 )
 from scripts.run_daily_exec_report import read_latest_session_id  # noqa: E402
 from scripts.query_last_trades import load_trades  # noqa: E402
@@ -86,14 +84,6 @@ def get_report(
         session_only=session_only,
         include_historical=include_historical,
     )
-    stats = compute_report_stats(
-        hours=hours,
-        log_path=LOG_PATH,
-        session_id=target_session,
-        session_only=session_only,
-        include_historical=include_historical,
-    )
-    report["last_trades"] = serialize_trades(stats.get("last_trades") or [])
     return report
 
 

@@ -538,8 +538,11 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             if pnl_value > 0:
                 entry["wins"] += 1
         for entry in stats.values():
-            trades = entry["trades"]
-            wins = entry.pop("wins")
+            trades = entry.get("trades", 0)
+            wins = entry.get("wins", 0)
+            losses = trades - wins if trades >= wins else 0
+            entry["wins"] = wins
+            entry["losses"] = losses
             entry["win_rate"] = (wins / trades) if trades else 0.0
             entry["avg_pnl_per_trade"] = (entry["pnl"] / trades) if trades else 0.0
         return stats

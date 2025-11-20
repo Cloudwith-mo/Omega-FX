@@ -139,6 +139,25 @@ def generate_exec_report(
         f"- filtered_daily_loss: {stats['filters']['filtered_daily_loss']}",
         f"- filtered_invalid_stops: {stats['filters']['filtered_invalid_stops']}",
     ]
+    strategy_rows = stats.get("strategy_breakdown") or {}
+    lines.append("")
+    lines.append("## Strategy breakdown")
+    lines.append("")
+    if strategy_rows:
+        lines.append("| Strategy | Trades | Wins | Losses | PnL | Win % | Avg PnL |")
+        lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for strategy_id, entry in sorted(strategy_rows.items()):
+            trades = int(entry.get("trades", 0) or 0)
+            wins_value = int(entry.get("wins", 0) or 0)
+            losses_value = int(entry.get("losses", max(0, trades - wins_value)))
+            pnl_value = float(entry.get("pnl", 0.0) or 0.0)
+            avg_value = float(entry.get("avg_pnl_per_trade", 0.0) or 0.0)
+            win_pct = float(entry.get("win_rate", 0.0) or 0.0) * 100
+            lines.append(
+                f"| {strategy_id} | {trades} | {wins_value} | {losses_value} | {pnl_value:.2f} | {win_pct:.2f}% | {avg_value:.2f} |"
+            )
+    else:
+        lines.append("No strategy data recorded.")
     trades_rows = stats.get("last_trades") or []
     lines.append("")
     lines.append("## Last 10 trades in window")
@@ -328,9 +347,12 @@ def _summarize_window(
     for strategy_id, bucket in strategy_stats.items():
         trades = bucket["trades"]
         wins_value = bucket.get("wins", 0)
+        losses_value = trades - wins_value if trades >= wins_value else 0
         pnl_value = bucket.get("pnl", 0.0)
         strategy_breakdown[strategy_id] = {
             "trades": trades,
+            "wins": wins_value,
+            "losses": losses_value,
             "win_rate": (wins_value / trades) if trades else 0.0,
             "pnl": pnl_value,
             "avg_pnl_per_trade": (pnl_value / trades) if trades else 0.0,
@@ -342,8 +364,12 @@ def _summarize_window(
             pnl_value = float(entry.get("pnl", 0.0) or 0.0)
             win_rate_value = float(entry.get("win_rate", 0.0) or 0.0)
             avg_value = float(entry.get("avg_pnl_per_trade", 0.0) or 0.0)
+            wins_value = int(round(win_rate_value * trades)) if trades else 0
+            losses_value = trades - wins_value if trades >= wins_value else 0
             strategy_breakdown[strategy_id] = {
                 "trades": trades,
+                "wins": wins_value,
+                "losses": losses_value,
                 "win_rate": win_rate_value,
                 "pnl": pnl_value,
                 "avg_pnl_per_trade": avg_value,

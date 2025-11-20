@@ -23,6 +23,8 @@ from core.execution_accounts import available_profile_names, resolve_account_con
 from core.position_sizing import calculate_position_size  # noqa: E402
 from core.risk import RISK_PROFILES, RiskMode  # noqa: E402
 from execution_backends.mt5_demo import Mt5DemoExecutionBackend  # noqa: E402
+from strategies.omega_mr_m15 import OMEGA_MR_STRATEGY_ID, generate_mean_reversion_signal
+from strategies.omega_session_london import OMEGA_SESSION_LDN_STRATEGY_ID, make_london_session_strategy
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +62,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk_env", type=str, default=None)
     parser.add_argument("--risk_tier", type=str, default=None)
     parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID)
+    parser.add_argument("--enable-mean-reversion", action=argparse.BooleanOptionalAction, default=True, help="Toggle the Omega MR M15 strategy.")
+    parser.add_argument("--mr-risk-scale", type=float, default=0.5, help="Relative risk scale for MR strategy trades.")
+    parser.add_argument("--enable-session-momentum", action=argparse.BooleanOptionalAction, default=False, help="Toggle the London session strategy.")
+    parser.add_argument("--session-risk-scale", type=float, default=0.25, help="Relative risk scale for London session trades.")
     return parser.parse_args()
 
 
@@ -73,12 +79,22 @@ def run_exec_once(args: argparse.Namespace) -> dict:
     if not account.server:
         raise RuntimeError("MT5 server is required via profile, env, or CLI arguments.")
 
+    extra_strategies = []
+    strategy_settings = {}
+    if args.enable_mean_reversion:
+        extra_strategies.append(generate_mean_reversion_signal)
+        strategy_settings[OMEGA_MR_STRATEGY_ID] = {"risk_scale_multiplier": max(args.mr_risk_scale, 0.0)}
+    if args.enable_session_momentum:
+        extra_strategies.append(make_london_session_strategy())
+        strategy_settings[OMEGA_SESSION_LDN_STRATEGY_ID] = {"risk_scale_multiplier": max(args.session_risk_scale, 0.0)}
     backtest = run_backtest(
         df=None,
         starting_equity=args.starting_equity,
         entry_mode=FTMO_EVAL_PRESET.entry_mode,
         trading_firm=FTMO_EVAL_PRESET.trading_firm,
         account_phase=FTMO_EVAL_PRESET.account_phase,
+        extra_strategy_factories=extra_strategies or None,
+        strategy_settings=strategy_settings or None,
     )
 
     backend = Mt5DemoExecutionBackend(
@@ -137,7 +153,10 @@ def run_exec_once(args: argparse.Namespace) -> dict:
         summary['session_id'] = args.session_id
     if args.risk_env:
         summary['risk_env'] = args.risk_env
-    summary['strategy_id'] = args.strategy_id or summary.get('strategy_id')
+    if extra_strategies:
+        summary['strategy_id'] = 'MULTI'
+    else:
+        summary['strategy_id'] = args.strategy_id or summary.get('strategy_id')
     summary["filtered_max_positions"] = max(summary.get("filtered_max_positions", 0), filtered_counts["max_positions"])
     summary["filtered_daily_loss"] = max(summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"])
     summary["filtered_invalid_stops"] = max(
@@ -184,6 +203,7 @@ def _submit_from_trade(
         timestamp=timestamp,
         tag=trade.get("pattern_tag", "OMEGA_FX"),
         metadata={"signal_reason": trade.get("signal_reason") or trade.get("pattern_tag") or trade.get("reason")},
+        strategy_id=trade.get("strategy_id") or DEFAULT_STRATEGY_ID,
     )
     return backend.submit_order(spec)
 
@@ -202,3 +222,7 @@ def _update_filtered_counts(backend: Mt5DemoExecutionBackend, counters: dict[str
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+

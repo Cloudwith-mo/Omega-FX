@@ -19,6 +19,15 @@ DEFAULT_LOG_PATH = Path("results/mt5_demo_exec_log.csv")
 DEFAULT_SNAPSHOT_PATH = Path("results/notification_snapshot_demo.txt")
 RECONCILIATION_EPSILON = 1.0
 
+STRATEGY_FAMILY_HINTS = {
+    "OMEGA_M15_TF1": "trend",
+    "OMEGA_MR_M15": "mean_reversion",
+    "OMEGA_SESSION_LDN_M15": "session_momentum",
+}
+
+
+def _infer_strategy_family(strategy_id: str) -> str:
+    return STRATEGY_FAMILY_HINTS.get(strategy_id, "unknown")
 
 def load_summary(path: Path = DEFAULT_SUMMARY_PATH) -> dict[str, Any]:
     if path.exists():
@@ -128,13 +137,13 @@ def build_status_payload(
         balance_start=balance_start,
         balance_end=balance_end,
     )
-    strategy_breakdown = _normalize_strategy_breakdown(
+    strategy_breakdown = build_strategy_breakdown_entries(
         summary.get("per_strategy"),
         stats.get("strategy_breakdown"),
     )
     primary_strategy_id = summary.get("strategy_id") or stats.get("strategy_id")
     if not primary_strategy_id and strategy_breakdown:
-        primary_strategy_id = next(iter(strategy_breakdown.keys()))
+        primary_strategy_id = strategy_breakdown[0]["strategy_id"]
     if not primary_strategy_id:
         primary_strategy_id = DEFAULT_STRATEGY_ID
     payload = {
@@ -158,7 +167,8 @@ def build_status_payload(
         "last_24h_trades": stats.get("trades", 0),
         "last_24h_win_rate": stats.get("win_rate", 0.0),
         "filter_counts": stats.get("filters", {}),
-        "snapshot": read_snapshot(snapshot_path),\r\n        "strategy_breakdown": strategy_breakdown,
+        "snapshot": read_snapshot(snapshot_path),
+        "strategy_breakdown": strategy_breakdown,
         "open_positions": open_positions,
         "reconciliation": reconciliation,
     }
@@ -202,30 +212,59 @@ def _build_reconciliation_payload(
 
 
 
-def _normalize_strategy_breakdown(*sources) -> dict[str, dict]:
-    result: dict[str, dict] = {}
+
+def build_strategy_breakdown_entries(*sources: Any) -> list[dict[str, Any]]:
+    buckets: dict[str, dict[str, Any]] = {}
     for source in sources:
         if not source:
             continue
-        for strategy_id, entry in source.items():
-            trades = int(entry.get("trades", 0) or 0)
-            pnl_value = float(entry.get("pnl", 0.0) or 0.0)
-            win_rate_value = float(entry.get("win_rate", 0.0) or 0.0)
-            avg_value = float(entry.get("avg_pnl_per_trade", entry.get("avg_pnl", 0.0)) or 0.0)
-            result[strategy_id] = {
-                "trades": trades,
-                "win_rate": win_rate_value,
-                "pnl": pnl_value,
-                "avg_pnl_per_trade": avg_value,
-            }
-    if not result:
-        result[DEFAULT_STRATEGY_ID] = {
-            "trades": 0,
-            "win_rate": 0.0,
-            "pnl": 0.0,
-            "avg_pnl_per_trade": 0.0,
-        }
-    return result
+        if isinstance(source, dict):
+            items = list(source.items())
+        elif isinstance(source, list):
+            items = [(entry.get("strategy_id"), entry) for entry in source]
+        else:
+            continue
+        for strategy_id, entry in items:
+            if not strategy_id:
+                continue
+            buckets[strategy_id] = _coerce_strategy_entry(str(strategy_id), entry)
+    if not buckets:
+        buckets[DEFAULT_STRATEGY_ID] = _coerce_strategy_entry(DEFAULT_STRATEGY_ID, {})
+    return sorted(buckets.values(), key=lambda row: row["strategy_id"])
+
+
+def _coerce_strategy_entry(strategy_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    trades = int(payload.get("trades", 0) or 0)
+    wins_value = payload.get("wins")
+    win_rate_value = payload.get("win_rate")
+    if wins_value is None and win_rate_value is not None and trades:
+        wins_value = int(round(float(win_rate_value) * trades))
+    wins = int(wins_value or 0)
+    losses_value = payload.get("losses")
+    if losses_value is None:
+        losses_value = trades - wins if trades >= wins else 0
+    losses = int(losses_value or 0)
+    pnl_value = float(payload.get("pnl", 0.0) or 0.0)
+    avg_value = payload.get("avg_pnl_per_trade")
+    if avg_value is None:
+        avg_value = payload.get("avg_pnl")
+    if avg_value is None:
+        avg_value = (pnl_value / trades) if trades else 0.0
+    avg_pnl = float(avg_value or 0.0)
+    if win_rate_value is None:
+        win_rate_value = (wins / trades) if trades else 0.0
+    win_rate = float(win_rate_value or 0.0)
+    family = str(payload.get("family") or _infer_strategy_family(strategy_id))
+    return {
+        "strategy_id": strategy_id,
+        "family": family,
+        "trades": trades,
+        "wins": wins,
+        "losses": losses,
+        "pnl": pnl_value,
+        "win_rate": win_rate,
+        "avg_pnl": avg_pnl,
+    }
 
 def serialize_trades(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
     serialized: list[dict[str, Any]] = []
@@ -247,6 +286,7 @@ def build_report_payload(
     session_only: bool = False,
     include_historical: bool = False,
 ) -> dict[str, Any]:
+    summary = load_summary(summary_path)
     stats = compute_report_stats(
         hours=hours,
         log_path=log_path,
@@ -258,10 +298,11 @@ def build_report_payload(
     env_label = read_latest_risk_env(summary_path)
     window_start = stats.get("window_start")
     window_end = stats.get("window_end")
-    strategy_breakdown = _normalize_strategy_breakdown(
+    strategy_breakdown = build_strategy_breakdown_entries(
         stats.get("strategy_breakdown"),
+        summary.get("per_strategy") if summary else None,
     )
-    primary_strategy_id = stats.get("strategy_id") or (next(iter(strategy_breakdown.keys())) if strategy_breakdown else DEFAULT_STRATEGY_ID)
+    primary_strategy_id = stats.get("strategy_id") or (strategy_breakdown[0]["strategy_id"] if strategy_breakdown else DEFAULT_STRATEGY_ID)
     payload = {
         "window_start": window_start.isoformat() if isinstance(window_start, datetime) else str(window_start),
         "window_end": window_end.isoformat() if isinstance(window_end, datetime) else str(window_end),
@@ -280,7 +321,8 @@ def build_report_payload(
         "environment": env_label,
         "session_id": stats.get("session_id") or session_id or "",
         "strategy_id": primary_strategy_id,
-        "last_trades": serialize_trades(stats.get("last_trades") or []),\r\n        "strategy_breakdown": strategy_breakdown,
+        "last_trades": serialize_trades(stats.get("last_trades") or []),
+        "strategy_breakdown": strategy_breakdown,
     }
     return payload
 

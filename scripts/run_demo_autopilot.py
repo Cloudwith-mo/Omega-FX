@@ -40,6 +40,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk_env", type=str, default="demo", help="Risk profile environment key.")
     parser.add_argument("--confirm_live", action="store_true", help="Required acknowledgement when --risk_env live is used.")
     parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID, help="Strategy identifier for this session.")
+    parser.add_argument("--enable-mean-reversion", action=argparse.BooleanOptionalAction, default=True, help="Toggle the Omega MR strategy inside the demo loop.")
+    parser.add_argument("--mr-risk-scale", type=float, default=0.5, help="Relative risk scale for MR trades.")
+    parser.add_argument("--enable-session-momentum", action=argparse.BooleanOptionalAction, default=False, help="Toggle the London session strategy inside the demo loop.")
+    parser.add_argument("--session-risk-scale", type=float, default=0.25, help="Relative risk scale for session trades.")
     parser.add_argument("--dry_run", action=argparse.BooleanOptionalAction, default=False, help="Force dry-run mode.")
     return parser.parse_args()
 
@@ -95,6 +99,10 @@ def main() -> int:
             risk_env=args.risk_env,
             risk_tier=selected_risk_tier,
             strategy_id=args.strategy_id,
+            enable_mean_reversion=args.enable_mean_reversion,
+            mr_risk_scale=args.mr_risk_scale,
+            enable_session_momentum=args.enable_session_momentum,
+            session_risk_scale=args.session_risk_scale,
         )
         try:
             summary = exec_loop.run_exec_once(exec_args)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 from datetime import date
-from typing import List, Optional
+from typing import Any, Callable, List, Optional
 
 from pathlib import Path
 
@@ -40,9 +40,11 @@ from core.risk import (
 )
 from core.risk_aggression import set_custom_tier_scales, should_allow_risk_aggression
 from core.sizing import compute_position_size
-from core.strategy import annotate_indicators, generate_signal
+from core.strategy import TradeDecision, annotate_indicators, generate_signal
 
 
+
+StrategyFn = Callable[[pd.Series, pd.Series], TradeDecision | None]
 REQUIRED_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
 
@@ -641,6 +643,8 @@ def run_backtest(
     firm_profile: str | None = None,
     trading_firm: str | None = None,
     account_phase: str | None = None,
+    extra_strategy_factories: list[StrategyFn] | None = None,
+    strategy_settings: dict[str, dict[str, Any]] | None = None,
 ) -> BacktestResult:
     """Run a FundedNext-aware backtest over one or multiple symbols."""
 
@@ -665,6 +669,10 @@ def run_backtest(
         default_positions = MAX_CONCURRENT_POSITIONS
     max_open_positions = phase_profile.max_concurrent_positions if phase_profile else default_positions
     max_open_positions = max(1, max_open_positions)
+    strategy_functions: list[StrategyFn] = [generate_signal]
+    if extra_strategy_factories:
+        strategy_functions.extend(extra_strategy_factories)
+    strategy_settings = strategy_settings or {}
 
     try:
         symbol_sets = _build_symbol_frame_sets(
@@ -757,7 +765,20 @@ def run_backtest(
                 daily_min = daily_start_equity
                 daily_mode = risk_state.current_mode.value
     
-            signal = generate_signal(row, prev_row)
+            signals: list[TradeDecision] = []
+            for strategy_fn in strategy_functions:
+                try:
+                    decision = strategy_fn(row, prev_row)
+                except Exception:
+                    continue
+                if decision is None or decision.action == "flat":
+                    continue
+                signals.append(decision)
+            signal_actions = {
+                dec.strategy_id: dec.action
+                for dec in signals
+                if dec.action in {"long", "short"}
+            }
             profile = RISK_PROFILES[risk_state.current_mode]
             risk_state.enforce_drawdown_limits(profile, challenge, timestamp=timestamp_dt)
             mode_controller.step_down_for_drawdown(timestamp_dt, risk_state.total_dd_from_peak)
@@ -801,10 +822,8 @@ def run_backtest(
                         exit_price = position.take_profit
                         exit_reason = "Take Profit"
     
-                opposite_signal = (
-                    signal.action == "long" and position.direction == "short"
-                ) or (signal.action == "short" and position.direction == "long")
-                if exit_price is None and opposite_signal:
+                opposite_direction = signal_actions.get(position.strategy_id)
+                if exit_price is None and opposite_direction and opposite_direction != position.direction:
                     exit_price = close_price
                     exit_reason = "Opposite signal"
     
@@ -855,153 +874,160 @@ def run_backtest(
                     open_positions.remove(position)
                     mode_controller.record_trade(pnl, risk_state.current_equity, timestamp_dt)
     
-            entry_allowed = (
-                signal.action in {"long", "short"}
-                and signal.stop_distance_pips is not None
-                and signal.take_profit_distance_pips is not None
-                and risk_state.can_trade()
-            )
-            if entry_allowed:
-                raw_signal_count += 1
-                variant = getattr(signal, "variant", "unknown")
-                signal_variant_counts[variant] = signal_variant_counts.get(variant, 0) + 1
-                if len(open_positions) >= max_open_positions:
-                    filtered_counts["max_open_positions"] += 1
-                    continue
+            for signal in signals:
+                entry_allowed = (
+                    signal.action in {"long", "short"}
+                    and signal.stop_distance_pips is not None
+                    and signal.take_profit_distance_pips is not None
+                    and risk_state.can_trade()
+                )
+                if entry_allowed:
+                    raw_signal_count += 1
+                    variant = getattr(signal, "variant", "unknown")
+                    signal_variant_counts[variant] = signal_variant_counts.get(variant, 0) + 1
+                    if len(open_positions) >= max_open_positions:
+                        filtered_counts["max_open_positions"] += 1
+                        continue
     
-                session_tag = _session_tag(timestamp)
-                atr_value = float(context_row.get("ATR_14", float("nan")))
-                if pd.isna(atr_value):
-                    fallback_atr = context_atr_high if context_atr_high > 0 else context_atr_low
-                    atr_value = max(fallback_atr, 1e-6)
-                entry_atr_value = float(row.get("ATR_14", float("nan")))
-                if pd.isna(entry_atr_value):
-                    fallback_entry_atr = entry_atr_high if entry_atr_high > 0 else entry_atr_low
-                    entry_atr_value = max(fallback_entry_atr, 1e-6)
-                vol_regime = _volatility_regime(atr_value, context_atr_low, context_atr_high)
-                trend_regime = _trend_regime(signal.action, context_row)
+                    session_tag = _session_tag(timestamp)
+                    atr_value = float(context_row.get("ATR_14", float("nan")))
+                    if pd.isna(atr_value):
+                        fallback_atr = context_atr_high if context_atr_high > 0 else context_atr_low
+                        atr_value = max(fallback_atr, 1e-6)
+                    entry_atr_value = float(row.get("ATR_14", float("nan")))
+                    if pd.isna(entry_atr_value):
+                        fallback_entry_atr = entry_atr_high if entry_atr_high > 0 else entry_atr_low
+                        entry_atr_value = max(fallback_entry_atr, 1e-6)
+                    vol_regime = _volatility_regime(atr_value, context_atr_low, context_atr_high)
+                    trend_regime = _trend_regime(signal.action, context_row)
     
-                filter_result = should_allow_trade(
-                    TradeTags(
-                        session_tag=session_tag,
-                        trend_regime=trend_regime,
-                        volatility_regime=vol_regime,
+                    filter_result = should_allow_trade(
+                        TradeTags(
+                            session_tag=session_tag,
+                            trend_regime=trend_regime,
+                            volatility_regime=vol_regime,
+                        )
                     )
-                )
-                if not filter_result.session_passed:
-                    filtered_counts["session"] += 1
-                    continue
-                after_session_count += 1
+                    if not filter_result.session_passed:
+                        filtered_counts["session"] += 1
+                        continue
+                    after_session_count += 1
     
-                if not filter_result.trend_passed:
-                    filtered_counts["trend"] += 1
-                    continue
-                after_trend_count += 1
+                    if not filter_result.trend_passed:
+                        filtered_counts["trend"] += 1
+                        continue
+                    after_trend_count += 1
     
-                if not filter_result.volatility_passed:
-                    reason = (filter_result.reason or "volatility").lower()
-                    filtered_counts[reason] = filtered_counts.get(reason, 0) + 1
-                    continue
-                after_volatility_count += 1
+                    if not filter_result.volatility_passed:
+                        reason = (filter_result.reason or "volatility").lower()
+                        filtered_counts[reason] = filtered_counts.get(reason, 0) + 1
+                        continue
+                    after_volatility_count += 1
     
-                lot_size = compute_position_size(
-                    account_equity=risk_state.current_equity,
-                    risk_mode=risk_state.current_mode,
-                    stop_distance_pips=signal.stop_distance_pips,
-                )
-                pip_to_price = signal.stop_distance_pips / 10_000
-                tp_to_price = signal.take_profit_distance_pips / 10_000
-                entry_price = float(row["close"])
+                    lot_size = compute_position_size(
+                        account_equity=risk_state.current_equity,
+                        risk_mode=risk_state.current_mode,
+                        stop_distance_pips=signal.stop_distance_pips,
+                    )
+                    pip_to_price = signal.stop_distance_pips / 10_000
+                    tp_to_price = signal.take_profit_distance_pips / 10_000
+                    entry_price = float(row["close"])
     
-                breakout_high = float(row.get("HIGH_BREAKOUT", float("nan")))
-                breakout_low = float(row.get("LOW_BREAKOUT", float("nan")))
-                sma_fast = float(row.get("SMA_slow", float("nan")))
-                sma_trend = float(row.get("SMA_trend", float("nan")))
+                    breakout_high = float(row.get("HIGH_BREAKOUT", float("nan")))
+                    breakout_low = float(row.get("LOW_BREAKOUT", float("nan")))
+                    sma_fast = float(row.get("SMA_slow", float("nan")))
+                    sma_trend = float(row.get("SMA_trend", float("nan")))
     
-                is_breakout = _meets_breakout_conditions(
-                    direction=signal.action,
-                    entry_price=entry_price,
-                    sma_fast=sma_fast,
-                    sma_trend=sma_trend,
-                    breakout_level=breakout_high if signal.action == "long" else breakout_low,
-                    atr_value=atr_value,
-                    config=breakout_cfg,
-                )
-                pattern_tag = "breakout_v1" if is_breakout else "non_breakout"
-    
-                stop_loss = entry_price - pip_to_price if signal.action == "long" else entry_price + pip_to_price
-                take_profit = entry_price + tp_to_price if signal.action == "long" else entry_price - tp_to_price
-    
-                combo_key = (session_tag, trend_regime, vol_regime, pattern_tag)
-                pre_risk_combo_counts[combo_key] = pre_risk_combo_counts.get(combo_key, 0) + 1
-    
-                after_breakout_count += 1
-    
-                risk_aggr_result = should_allow_risk_aggression(
-                    combo_key,
-                    risk_state.current_mode,
-                )
-                risk_tier = risk_aggr_result.tier or "UNKNOWN"
-                if not risk_aggr_result.allowed:
-                    filtered_counts["risk_aggression"] += 1
-                    continue
-                after_risk_aggression_count += 1
-                risk_scale = max(0.0, risk_aggr_result.risk_scale)
-    
-                lot_size *= risk_scale
-                if lot_size < 0.0:
-                    lot_size = 0.0
-    
-                risk_amount = signal.stop_distance_pips * PIP_VALUE_PER_STANDARD_LOT * lot_size
-    
-                if lot_size < 1e-4:
-                    continue
-    
-                projected_loss = max(0.0, -todays_realized_pnl)
-                for pos in open_positions:
-                    projected_loss += pos.max_loss_amount
-                projected_loss += risk_amount
-                internal_daily_limit = firm_profile_cfg.internal_max_daily_loss_fraction * risk_state.start_of_day_equity
-                if projected_loss > internal_daily_limit + 1e-9:
-                    filtered_counts["daily_risk_budget"] += 1
-                    continue
-    
-                if can_open_new_trade(
-                    todays_realized_pnl=todays_realized_pnl,
-                    open_positions=open_positions,
-                    proposed_trade_risk_amount=risk_amount,
-                    equity_start_of_day=risk_state.start_of_day_equity,
-                    profile=profile,
-                    challenge=challenge,
-                    firm_profile=firm_profile_cfg,
-                ):
-                    signal_reason = _derive_signal_reason(signal, pattern_tag)
-                    new_position = ActivePosition(
-                        symbol=event.symbol,
+                    is_breakout = _meets_breakout_conditions(
                         direction=signal.action,
-                        entry_time=timestamp,
                         entry_price=entry_price,
-                        lot_size=lot_size,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
-                        risk_mode_at_entry=risk_state.current_mode,
-                        reason=signal.reason,
-                        risk_amount=risk_amount,
-                        atr_value_at_entry=entry_atr_value,
-                        session_tag=session_tag,
-                        volatility_regime=vol_regime,
-                        trend_regime=trend_regime,
-                        breakout_high=breakout_high,
-                        breakout_low=breakout_low,
-                        risk_per_unit=pip_to_price,
-                        risk_scale=risk_scale,
-                        risk_tier=risk_tier,
-                        pattern_tag=pattern_tag,
-                        signal_reason=signal_reason,
-                        entry_timeframe=event.timeframe,
-                        strategy_id=signal.strategy_id,
+                        sma_fast=sma_fast,
+                        sma_trend=sma_trend,
+                        breakout_level=breakout_high if signal.action == "long" else breakout_low,
+                        atr_value=atr_value,
+                        config=breakout_cfg,
                     )
-                    open_positions.append(new_position)
+                    if getattr(signal, "variant", "").startswith("mr_"):
+                        pattern_tag = signal.variant
+                    else:
+                        pattern_tag = "breakout_v1" if is_breakout else "non_breakout"
+    
+                    stop_loss = entry_price - pip_to_price if signal.action == "long" else entry_price + pip_to_price
+                    take_profit = entry_price + tp_to_price if signal.action == "long" else entry_price - tp_to_price
+    
+                    combo_key = (session_tag, trend_regime, vol_regime, pattern_tag)
+                    pre_risk_combo_counts[combo_key] = pre_risk_combo_counts.get(combo_key, 0) + 1
+    
+                    after_breakout_count += 1
+    
+                    risk_aggr_result = should_allow_risk_aggression(
+                        combo_key,
+                        risk_state.current_mode,
+                    )
+                    risk_tier = risk_aggr_result.tier or "UNKNOWN"
+                    if not risk_aggr_result.allowed:
+                        filtered_counts["risk_aggression"] += 1
+                        continue
+                    after_risk_aggression_count += 1
+                    risk_scale = max(0.0, risk_aggr_result.risk_scale)
+                    strategy_config = strategy_settings.get(signal.strategy_id, {})
+                    strategy_multiplier = float(strategy_config.get("risk_scale_multiplier", 1.0) or 1.0)
+                    risk_scale *= strategy_multiplier
+    
+                    lot_size *= risk_scale
+                    if lot_size < 0.0:
+                        lot_size = 0.0
+    
+                    risk_amount = signal.stop_distance_pips * PIP_VALUE_PER_STANDARD_LOT * lot_size
+    
+                    if lot_size < 1e-4:
+                        continue
+    
+                    projected_loss = max(0.0, -todays_realized_pnl)
+                    for pos in open_positions:
+                        projected_loss += pos.max_loss_amount
+                    projected_loss += risk_amount
+                    internal_daily_limit = firm_profile_cfg.internal_max_daily_loss_fraction * risk_state.start_of_day_equity
+                    if projected_loss > internal_daily_limit + 1e-9:
+                        filtered_counts["daily_risk_budget"] += 1
+                        continue
+    
+                    if can_open_new_trade(
+                        todays_realized_pnl=todays_realized_pnl,
+                        open_positions=open_positions,
+                        proposed_trade_risk_amount=risk_amount,
+                        equity_start_of_day=risk_state.start_of_day_equity,
+                        profile=profile,
+                        challenge=challenge,
+                        firm_profile=firm_profile_cfg,
+                    ):
+                        signal_reason = _derive_signal_reason(signal, pattern_tag)
+                        new_position = ActivePosition(
+                            symbol=event.symbol,
+                            direction=signal.action,
+                            entry_time=timestamp,
+                            entry_price=entry_price,
+                            lot_size=lot_size,
+                            stop_loss=stop_loss,
+                            take_profit=take_profit,
+                            risk_mode_at_entry=risk_state.current_mode,
+                            reason=signal.reason,
+                            risk_amount=risk_amount,
+                            atr_value_at_entry=entry_atr_value,
+                            session_tag=session_tag,
+                            volatility_regime=vol_regime,
+                            trend_regime=trend_regime,
+                            breakout_high=breakout_high,
+                            breakout_low=breakout_low,
+                            risk_per_unit=pip_to_price,
+                            risk_scale=risk_scale,
+                            risk_tier=risk_tier,
+                            pattern_tag=pattern_tag,
+                            signal_reason=signal_reason,
+                            entry_timeframe=event.timeframe,
+                            strategy_id=signal.strategy_id,
+                        )
+                        open_positions.append(new_position)
     
             equity_value = risk_state.current_equity + sum(pos.unrealized_pnl for pos in open_positions)
             equity_curve_points.append((timestamp, equity_value))
