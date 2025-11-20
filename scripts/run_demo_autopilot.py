@@ -144,11 +144,17 @@ def main() -> int:
             args.summary_path.parent.mkdir(parents=True, exist_ok=True)
             args.summary_path.write_text(json.dumps(summary, indent=2))
             pnl = summary.get("final_equity", 0.0) - summary.get("initial_equity", 0.0)
+            per_strategy = summary.get("per_strategy") or {}
+            strategy_parts = [f"{sid}={int((entry or {}).get('trades', 0))}" for sid, entry in sorted(per_strategy.items())]
+            strategies_display = ", ".join(strategy_parts) if strategy_parts else "none"
+            session_pnl_value = summary.get("session_pnl")
+            session_text = f" session_pnl={session_pnl_value:+.2f}" if session_pnl_value is not None else ""
             print(
                 f"[Autopilot] iteration {iteration} "
                 f"trades={summary.get('number_of_trades', 0)} "
                 f"pnl={pnl:.2f} "
                 f"env={args.risk_env} tier={selected_risk_tier} strategy={args.strategy_id} "
+                f"strategies={strategies_display}{session_text} "
                 f"filters="
                 f"{json.dumps({k: summary.get(k, 0) for k in ['filtered_max_positions', 'filtered_daily_loss', 'filtered_invalid_stops']})} "
                 f"reasons={json.dumps(summary.get('signal_reason_counts', {}))}"

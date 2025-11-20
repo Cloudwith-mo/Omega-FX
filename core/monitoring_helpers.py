@@ -49,22 +49,24 @@ def compute_report_stats(
     session_id: str | None = None,
     session_only: bool = False,
     include_historical: bool = False,
+    summary_data: dict[str, Any] | None = None,
+    summary_path: Path = DEFAULT_SUMMARY_PATH,
 ) -> dict[str, Any]:
     if not log_path.exists():
         raise FileNotFoundError(f"Execution log not found at {log_path}")
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(hours=max(hours, 0.0))
-    summary_data = None
-    if session_only or session_id:
-        candidate = load_summary()
+    summary_source = summary_data
+    if summary_source is None and (session_only or session_id):
+        candidate = load_summary(summary_path)
         if candidate and (session_id is None or candidate.get("session_id") == session_id):
-            summary_data = candidate
+            summary_source = candidate
     return _summarize_window(
         log_path,
         window_start,
         window_end,
         session_id=session_id,
-        summary_data=summary_data,
+        summary_data=summary_source,
         session_only=session_only,
         include_historical=include_historical,
     )
@@ -80,7 +82,10 @@ def build_status_payload(
 ) -> dict[str, Any]:
     summary = load_summary(summary_path)
     stats = compute_report_stats(
-        hours=hours, log_path=log_path, include_historical=include_historical
+        hours=hours,
+        log_path=log_path,
+        include_historical=include_historical,
+        summary_path=summary_path,
     )
     open_positions = fetch_open_positions_snapshot()
 
@@ -137,15 +142,33 @@ def build_status_payload(
         balance_start=balance_start,
         balance_end=balance_end,
     )
-    strategy_breakdown = build_strategy_breakdown_entries(
+    latest_session_id = summary.get("session_id")
+    session_stats = None
+    if latest_session_id:
+        try:
+            session_stats = compute_report_stats(
+                hours=hours,
+                log_path=log_path,
+                session_id=latest_session_id,
+                session_only=True,
+                include_historical=include_historical,
+                summary_data=summary,
+                summary_path=summary_path,
+            )
+        except FileNotFoundError:
+            session_stats = None
+    expected_latest = summary.get("active_strategies") or (session_stats.get("active_strategies") if session_stats else None) or [DEFAULT_STRATEGY_ID]
+    strategy_breakdown_latest = build_strategy_breakdown_entries(
         summary.get("per_strategy"),
-        stats.get("strategy_breakdown"),
+        session_stats.get("strategy_breakdown") if session_stats else None,
+        expected_ids=list(dict.fromkeys(expected_latest)),
     )
-    primary_strategy_id = summary.get("strategy_id") or stats.get("strategy_id")
-    if not primary_strategy_id and strategy_breakdown:
-        primary_strategy_id = strategy_breakdown[0]["strategy_id"]
-    if not primary_strategy_id:
-        primary_strategy_id = DEFAULT_STRATEGY_ID
+    expected_report = stats.get("active_strategies") or summary.get("active_strategies") or expected_latest
+    strategy_breakdown_report = build_strategy_breakdown_entries(
+        stats.get("strategy_breakdown"),
+        expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
+    )
+    primary_strategy_id = summary.get("strategy_id") or (strategy_breakdown_latest[0]["strategy_id"] if strategy_breakdown_latest else DEFAULT_STRATEGY_ID)
     payload = {
         "equity": session_end_equity,
         "account_equity": session_end_equity,
@@ -168,7 +191,9 @@ def build_status_payload(
         "last_24h_win_rate": stats.get("win_rate", 0.0),
         "filter_counts": stats.get("filters", {}),
         "snapshot": read_snapshot(snapshot_path),
-        "strategy_breakdown": strategy_breakdown,
+        "strategy_breakdown_latest": strategy_breakdown_latest,
+        "strategy_breakdown_report": strategy_breakdown_report,
+        "strategy_breakdown": strategy_breakdown_latest,
         "open_positions": open_positions,
         "reconciliation": reconciliation,
     }
@@ -213,7 +238,7 @@ def _build_reconciliation_payload(
 
 
 
-def build_strategy_breakdown_entries(*sources: Any) -> list[dict[str, Any]]:
+def build_strategy_breakdown_entries(*sources: Any, expected_ids: list[str] | None = None) -> list[dict[str, Any]]:
     buckets: dict[str, dict[str, Any]] = {}
     for source in sources:
         if not source:
@@ -228,6 +253,15 @@ def build_strategy_breakdown_entries(*sources: Any) -> list[dict[str, Any]]:
             if not strategy_id:
                 continue
             buckets[strategy_id] = _coerce_strategy_entry(str(strategy_id), entry)
+    if expected_ids:
+        ordered = []
+        for sid in expected_ids:
+            sid = (sid or "").strip()
+            if not sid:
+                continue
+            ordered.append(sid)
+        for sid in ordered:
+            buckets.setdefault(sid, _coerce_strategy_entry(sid, {}))
     if not buckets:
         buckets[DEFAULT_STRATEGY_ID] = _coerce_strategy_entry(DEFAULT_STRATEGY_ID, {})
     return sorted(buckets.values(), key=lambda row: row["strategy_id"])
@@ -293,16 +327,18 @@ def build_report_payload(
         session_id=session_id,
         session_only=session_only,
         include_historical=include_historical,
+        summary_path=summary_path,
     )
     tier = read_latest_risk_tier(summary_path)
     env_label = read_latest_risk_env(summary_path)
     window_start = stats.get("window_start")
     window_end = stats.get("window_end")
-    strategy_breakdown = build_strategy_breakdown_entries(
+    expected_report = stats.get("active_strategies") or (summary.get("active_strategies") if summary else None)
+    strategy_breakdown_report = build_strategy_breakdown_entries(
         stats.get("strategy_breakdown"),
-        summary.get("per_strategy") if summary else None,
+        expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
     )
-    primary_strategy_id = stats.get("strategy_id") or (strategy_breakdown[0]["strategy_id"] if strategy_breakdown else DEFAULT_STRATEGY_ID)
+    primary_strategy_id = stats.get("strategy_id") or (strategy_breakdown_report[0]["strategy_id"] if strategy_breakdown_report else DEFAULT_STRATEGY_ID)
     payload = {
         "window_start": window_start.isoformat() if isinstance(window_start, datetime) else str(window_start),
         "window_end": window_end.isoformat() if isinstance(window_end, datetime) else str(window_end),
@@ -322,7 +358,8 @@ def build_report_payload(
         "session_id": stats.get("session_id") or session_id or "",
         "strategy_id": primary_strategy_id,
         "last_trades": serialize_trades(stats.get("last_trades") or []),
-        "strategy_breakdown": strategy_breakdown,
+        "strategy_breakdown_report": strategy_breakdown_report,
+        "strategy_breakdown": strategy_breakdown_report,
     }
     return payload
 

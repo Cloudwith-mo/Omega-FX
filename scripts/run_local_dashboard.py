@@ -145,14 +145,14 @@ def _render_details_section(
 ) -> None:
     with st.expander("Details", expanded=False):
         st.markdown("### Strategy breakdown (latest session)")
-        latest_df = _strategy_breakdown_df(status.get("strategy_breakdown"))
+        latest_df = _strategy_breakdown_df(status.get("strategy_breakdown_latest") or status.get("strategy_breakdown"))
         if latest_df.empty:
             st.info("No strategy data for the latest session.")
         else:
             st.dataframe(latest_df)
 
         st.markdown("### Strategy breakdown (report window)")
-        report_df = _strategy_breakdown_df(report_stats.get("strategy_breakdown"))
+        report_df = _strategy_breakdown_df(report_stats.get("strategy_breakdown_report") or report_stats.get("strategy_breakdown"))
         if report_df.empty:
             st.info("No strategy data for this report window.")
         else:

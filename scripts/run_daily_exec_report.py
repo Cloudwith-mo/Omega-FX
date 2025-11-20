@@ -139,22 +139,26 @@ def generate_exec_report(
         f"- filtered_daily_loss: {stats['filters']['filtered_daily_loss']}",
         f"- filtered_invalid_stops: {stats['filters']['filtered_invalid_stops']}",
     ]
-    strategy_rows = stats.get("strategy_breakdown") or {}
+    from core.monitoring_helpers import build_strategy_breakdown_entries as _build_strategy_breakdown_entries
+    strategy_rows = _build_strategy_breakdown_entries(
+        stats.get("strategy_breakdown"),
+        expected_ids=stats.get("active_strategies") or None,
+    )
     lines.append("")
     lines.append("## Strategy breakdown")
     lines.append("")
     if strategy_rows:
         lines.append("| Strategy | Trades | Wins | Losses | PnL | Win % | Avg PnL |")
         lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: |")
-        for strategy_id, entry in sorted(strategy_rows.items()):
+        for entry in strategy_rows:
             trades = int(entry.get("trades", 0) or 0)
             wins_value = int(entry.get("wins", 0) or 0)
             losses_value = int(entry.get("losses", max(0, trades - wins_value)))
             pnl_value = float(entry.get("pnl", 0.0) or 0.0)
-            avg_value = float(entry.get("avg_pnl_per_trade", 0.0) or 0.0)
+            avg_value = float(entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0)
             win_pct = float(entry.get("win_rate", 0.0) or 0.0) * 100
             lines.append(
-                f"| {strategy_id} | {trades} | {wins_value} | {losses_value} | {pnl_value:.2f} | {win_pct:.2f}% | {avg_value:.2f} |"
+                f"| {entry.get('strategy_id')} | {trades} | {wins_value} | {losses_value} | {pnl_value:.2f} | {win_pct:.2f}% | {avg_value:.2f} |"
             )
     else:
         lines.append("No strategy data recorded.")
@@ -330,8 +334,10 @@ def _summarize_window(
     if session_summary and session_summary.get("ending_balance") is not None:
         end_balance = float(session_summary.get("ending_balance"))
     else:
-        fallback_balance = start_balance + (session_summary.get("session_balance_pnl") if session_summary else pnl)
-        end_balance = float(fallback_balance)
+        balance_delta = session_summary.get("session_balance_pnl") if session_summary else None
+        if balance_delta is None:
+            balance_delta = pnl
+        end_balance = float(start_balance + balance_delta)
     balance_pnl = end_balance - start_balance
     balance_pnl_pct = (balance_pnl / start_balance) if start_balance else 0.0
     wins = sum(1 for pnl_value in trade_results if pnl_value > 0)
@@ -385,6 +391,15 @@ def _summarize_window(
     else:
         strategy_id_value = DEFAULT_STRATEGY_ID
 
+    if session_summary and session_summary.get("active_strategies"):
+        active_strategies = list(session_summary.get("active_strategies"))
+    elif strategy_breakdown:
+        active_strategies = list(strategy_breakdown.keys())
+    elif last_strategy_id:
+        active_strategies = [last_strategy_id]
+    else:
+        active_strategies = [DEFAULT_STRATEGY_ID]
+
     return {
         "window_start": window_start,
         "window_end": window_end,
@@ -403,6 +418,7 @@ def _summarize_window(
         "end_balance": end_balance,
         "balance_pnl": balance_pnl,
         "balance_pnl_pct": balance_pnl_pct,
+        "active_strategies": active_strategies,
     }
 def _pnl_from_prices(symbol: str, direction: str, entry_price: float, exit_price: float, volume: float) -> float:
     meta = get_symbol_meta(symbol)

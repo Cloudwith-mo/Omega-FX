@@ -35,6 +35,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         risk_env: str | None = None,
         risk_tier: str | None = None,
         strategy_id: str | None = None,
+        active_strategy_ids: list[str] | None = None,
     ) -> None:
         self.login = login
         self.password = password
@@ -49,6 +50,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.risk_env = (risk_env or "").lower()
         self.risk_tier = (risk_tier or "").lower()
         self.default_strategy_id = strategy_id or DEFAULT_STRATEGY_ID
+        base_ids = [self.default_strategy_id]
+        if active_strategy_ids:
+            base_ids.extend(active_strategy_ids)
+        self.active_strategy_ids = set(base_ids)
         self.data_mode = "historical" if dry_run else "live"
         self.positions: Dict[str, ExecutionPosition] = {}
         self.current_equity = 0.0
@@ -492,6 +497,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
 
     def summary(self) -> dict:
         strategy_stats = self._compute_strategy_stats()
+        for strategy_id in sorted(self.active_strategy_ids):
+            strategy_stats.setdefault(strategy_id, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0, "win_rate": 0.0, "avg_pnl_per_trade": 0.0})
         wins = sum(1 for trade in self.trade_records if trade["pnl"] > 0)
         total = len(self.trade_records)
         daily_loss = max(0.0, -self.daily_realized)
@@ -525,6 +532,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "session_pnl": (self.ending_equity or self.current_equity) - (self.starting_equity or self.initial_equity),
             "session_balance_pnl": (self.ending_balance or self.starting_balance) - self.starting_balance,
             "per_strategy": strategy_stats,
+            "active_strategies": sorted(self.active_strategy_ids),
         }
 
     def _compute_strategy_stats(self) -> dict[str, dict]:

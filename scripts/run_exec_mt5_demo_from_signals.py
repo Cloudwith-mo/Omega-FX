@@ -81,12 +81,15 @@ def run_exec_once(args: argparse.Namespace) -> dict:
 
     extra_strategies = []
     strategy_settings = {}
+    active_strategy_ids = [args.strategy_id or "OMEGA_M15_TF1"]
     if args.enable_mean_reversion:
         extra_strategies.append(generate_mean_reversion_signal)
         strategy_settings[OMEGA_MR_STRATEGY_ID] = {"risk_scale_multiplier": max(args.mr_risk_scale, 0.0)}
+        active_strategy_ids.append(OMEGA_MR_STRATEGY_ID)
     if args.enable_session_momentum:
         extra_strategies.append(make_london_session_strategy())
         strategy_settings[OMEGA_SESSION_LDN_STRATEGY_ID] = {"risk_scale_multiplier": max(args.session_risk_scale, 0.0)}
+        active_strategy_ids.append(OMEGA_SESSION_LDN_STRATEGY_ID)
     backtest = run_backtest(
         df=None,
         starting_equity=args.starting_equity,
@@ -111,6 +114,7 @@ def run_exec_once(args: argparse.Namespace) -> dict:
         risk_env=args.risk_env,
         risk_tier=args.risk_tier,
         strategy_id=args.strategy_id,
+        active_strategy_ids=active_strategy_ids,
     )
     backend.connect()
 
@@ -149,6 +153,7 @@ def run_exec_once(args: argparse.Namespace) -> dict:
         backend.disconnect()
 
     summary = backend.summary()
+    summary["active_strategies"] = sorted(dict.fromkeys(active_strategy_ids))
     if args.session_id:
         summary['session_id'] = args.session_id
     if args.risk_env:
