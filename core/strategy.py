@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 import pandas as pd
 from config.settings import DEFAULT_BREAKOUT_CONFIG, BreakoutConfig
+from core.constants import DEFAULT_STRATEGY_ID
+
 
 
 @dataclass
@@ -18,6 +20,8 @@ class TradeDecision:
     take_profit_distance_pips: Optional[float]
     reason: str
     variant: str = "v1_cross"
+    signal_reason: str = "unknown"
+    strategy_id: str = DEFAULT_STRATEGY_ID
 
 
 def _wilder_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -51,7 +55,7 @@ def generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDec
     """
     required = ("SMA_fast", "SMA_slow", "ATR_14")
     if any(pd.isna(current_row[col]) or pd.isna(previous_row[col]) for col in required):
-        return TradeDecision("flat", None, None, "Insufficient data")
+        return TradeDecision("flat", None, None, "Insufficient data", signal_reason="insufficient_data", strategy_id=DEFAULT_STRATEGY_ID)
 
     fast_now = current_row["SMA_fast"]
     slow_now = current_row["SMA_slow"]
@@ -63,18 +67,18 @@ def generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDec
     tp_distance = 3.0 * atr_pips
 
     if fast_prev <= slow_prev and fast_now > slow_now:
-        return TradeDecision("long", stop_distance, tp_distance, "SMA bullish crossover", variant="v1_cross")
+        return TradeDecision("long", stop_distance, tp_distance, "SMA bullish crossover", variant="v1_cross", signal_reason="breakout_pullback", strategy_id=DEFAULT_STRATEGY_ID)
 
     if fast_prev >= slow_prev and fast_now < slow_now:
-        return TradeDecision("short", stop_distance, tp_distance, "SMA bearish crossover", variant="v1_cross")
+        return TradeDecision("short", stop_distance, tp_distance, "SMA bearish crossover", variant="v1_cross", signal_reason="breakout_pullback", strategy_id=DEFAULT_STRATEGY_ID)
 
     momentum_variant = _momentum_signal(current_row, previous_row)
     if momentum_variant:
         action = momentum_variant
         reason = "SMA momentum continuation"
-        return TradeDecision(action, stop_distance, tp_distance, reason, variant="v2_momentum")
+        return TradeDecision(action, stop_distance, tp_distance, reason, variant="v2_momentum", signal_reason="trend_continuation", strategy_id=DEFAULT_STRATEGY_ID)
 
-    return TradeDecision("flat", None, None, "No signal")
+    return TradeDecision("flat", None, None, "No signal", signal_reason="no_signal", strategy_id=DEFAULT_STRATEGY_ID)
 
 
 def _momentum_signal(current_row: pd.Series, previous_row: pd.Series) -> Optional[str]:

@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 
 from config.deploy_ftmo_eval import FTMO_EVAL_PRESET  # noqa: E402
 from core.backtest import run_backtest  # noqa: E402
+from core.constants import DEFAULT_STRATEGY_ID  # noqa: E402
 from core.execution_base import OrderSpec  # noqa: E402
 from core.execution_accounts import available_profile_names, resolve_account_config  # noqa: E402
 from core.position_sizing import calculate_position_size  # noqa: E402
@@ -55,6 +56,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--login", type=int, default=None)
     parser.add_argument("--server", type=str, default=None)
     parser.add_argument("--password", type=str, default=None)
+    parser.add_argument("--session_id", type=str, default=None)
+    parser.add_argument("--risk_env", type=str, default=None)
+    parser.add_argument("--risk_tier", type=str, default=None)
+    parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID)
     return parser.parse_args()
 
 
@@ -86,6 +91,10 @@ def run_exec_once(args: argparse.Namespace) -> dict:
         daily_loss_fraction=args.daily_loss_fraction,
         log_path=args.log_path,
         summary_path=args.summary_path,
+        session_id=args.session_id,
+        risk_env=args.risk_env,
+        risk_tier=args.risk_tier,
+        strategy_id=args.strategy_id,
     )
     backend.connect()
 
@@ -124,6 +133,11 @@ def run_exec_once(args: argparse.Namespace) -> dict:
         backend.disconnect()
 
     summary = backend.summary()
+    if args.session_id:
+        summary['session_id'] = args.session_id
+    if args.risk_env:
+        summary['risk_env'] = args.risk_env
+    summary['strategy_id'] = args.strategy_id or summary.get('strategy_id')
     summary["filtered_max_positions"] = max(summary.get("filtered_max_positions", 0), filtered_counts["max_positions"])
     summary["filtered_daily_loss"] = max(summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"])
     summary["filtered_invalid_stops"] = max(
@@ -169,6 +183,7 @@ def _submit_from_trade(
         take_profit=float(trade["take_profit"]),
         timestamp=timestamp,
         tag=trade.get("pattern_tag", "OMEGA_FX"),
+        metadata={"signal_reason": trade.get("signal_reason") or trade.get("pattern_tag") or trade.get("reason")},
     )
     return backend.submit_order(spec)
 

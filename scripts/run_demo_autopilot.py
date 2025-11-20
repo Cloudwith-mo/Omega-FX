@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Continuous MT5 demo execution loop with tiny risk."""
+"""Continuous MT5 demo execution loop with tiered risk."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover - CLI runner
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.constants import DEFAULT_STRATEGY_ID  # noqa: E402
+from core.risk_profiles import load_risk_profile  # noqa: E402
+from core.session import generate_session_id  # noqa: E402
 from scripts import run_exec_mt5_demo_from_signals as exec_loop  # noqa: E402
 
 
@@ -33,13 +36,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--login", type=int, default=None)
     parser.add_argument("--server", type=str, default=None)
     parser.add_argument("--password", type=str, default=None)
+    parser.add_argument("--risk_tier", type=str, default=None, help="Named risk tier (e.g. conservative).")
+    parser.add_argument("--risk_env", type=str, default="demo", help="Risk profile environment key.")
+    parser.add_argument("--confirm_live", action="store_true", help="Required acknowledgement when --risk_env live is used.")
+    parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID, help="Strategy identifier for this session.")
+    parser.add_argument("--dry_run", action=argparse.BooleanOptionalAction, default=False, help="Force dry-run mode.")
     return parser.parse_args()
+
+
+def _resolve_risk_tier(args: argparse.Namespace) -> str:
+    if not args.risk_tier:
+        return "custom"
+    profile = load_risk_profile(args.risk_env, args.risk_tier)
+    args.max_positions = profile.max_positions
+    args.per_trade_risk_fraction = profile.per_trade_risk_fraction
+    args.daily_loss_fraction = profile.daily_loss_fraction
+    print(
+        f"[Autopilot] Using risk tier '{profile.tier}' ({profile.env}) "
+        f"per_trade={profile.per_trade_risk_fraction}, daily_loss={profile.daily_loss_fraction}, "
+        f"max_positions={profile.max_positions}"
+    )
+    return profile.tier
 
 
 def main() -> int:
     args = parse_args()
+    args.risk_env = (args.risk_env or 'demo').lower()
+    if args.risk_env == 'live' and not args.confirm_live:
+        print('Refusing to run in live environment without --confirm_live.')
+        return 1
+    selected_risk_tier = _resolve_risk_tier(args)
+    session_id = generate_session_id(args.risk_env, selected_risk_tier)
+    print(f"[Autopilot] Session ID {session_id}")
     deadline = time.monotonic() + max(args.hours, 0.0) * 3600
     iteration = 0
+    session_start_equity: float | None = None
+    session_start_balance: float | None = None
     while True:
         now = time.monotonic()
         if iteration > 0 and now >= deadline:
@@ -47,7 +79,7 @@ def main() -> int:
         iteration += 1
         exec_args = Namespace(
             starting_equity=args.starting_equity,
-            dry_run=False,
+            dry_run=args.dry_run,
             account_profile=args.account_profile,
             max_positions=args.max_positions,
             per_trade_risk_fraction=args.per_trade_risk_fraction,
@@ -59,16 +91,59 @@ def main() -> int:
             login=args.login,
             server=args.server,
             password=args.password,
+            session_id=session_id,
+            risk_env=args.risk_env,
+            risk_tier=selected_risk_tier,
+            strategy_id=args.strategy_id,
         )
         try:
             summary = exec_loop.run_exec_once(exec_args)
+            if session_start_equity is None:
+                session_start_equity = float(
+                    summary.get("session_start_equity")
+                    or summary.get("initial_equity")
+                    or args.starting_equity
+                    or 0.0
+                )
+            if session_start_balance is None:
+                session_start_balance = float(
+                    summary.get("starting_balance")
+                    or summary.get("session_start_balance")
+                    or session_start_equity
+                )
+            session_end_equity = float(
+                summary.get("session_end_equity")
+                or summary.get("final_equity")
+                or session_start_equity
+            )
+            session_end_balance = float(
+                summary.get("ending_balance")
+                or summary.get("session_end_balance")
+                or session_start_balance
+            )
+            summary["session_start_equity"] = session_start_equity
+            summary["session_end_equity"] = session_end_equity
+            summary["session_pnl"] = session_end_equity - session_start_equity
+            summary["starting_balance"] = session_start_balance
+            summary["ending_balance"] = session_end_balance
+            summary["session_start_balance"] = session_start_balance
+            summary["session_end_balance"] = session_end_balance
+            summary["session_balance_pnl"] = session_end_balance - session_start_balance
+            summary["risk_tier"] = selected_risk_tier
+            summary["risk_env"] = args.risk_env
+            summary["session_id"] = session_id
+            summary["strategy_id"] = args.strategy_id
+            args.summary_path.parent.mkdir(parents=True, exist_ok=True)
+            args.summary_path.write_text(json.dumps(summary, indent=2))
             pnl = summary.get("final_equity", 0.0) - summary.get("initial_equity", 0.0)
             print(
                 f"[Autopilot] iteration {iteration} "
                 f"trades={summary.get('number_of_trades', 0)} "
                 f"pnl={pnl:.2f} "
+                f"env={args.risk_env} tier={selected_risk_tier} strategy={args.strategy_id} "
                 f"filters="
-                f"{json.dumps({k: summary.get(k, 0) for k in ['filtered_max_positions', 'filtered_daily_loss', 'filtered_invalid_stops']})}"
+                f"{json.dumps({k: summary.get(k, 0) for k in ['filtered_max_positions', 'filtered_daily_loss', 'filtered_invalid_stops']})} "
+                f"reasons={json.dumps(summary.get('signal_reason_counts', {}))}"
             )
         except Exception as exc:  # pragma: no cover - defensive guard
             print(f"[Autopilot] iteration {iteration} failed: {exc}")

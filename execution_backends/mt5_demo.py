@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ from typing import Dict, Optional
 
 import MetaTrader5 as mt5  # type: ignore
 
+from core.constants import DEFAULT_STRATEGY_ID
 from core.execution_base import ExecutionBackend, ExecutionPosition, OrderSpec
 from core.position_sizing import get_symbol_meta
 
@@ -29,6 +31,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         daily_loss_fraction: float = 0.02,
         log_path: str | Path = "results/mt5_demo_exec_log.csv",
         summary_path: str | Path = "results/mt5_demo_exec_summary.json",
+        session_id: str | None = None,
+        risk_env: str | None = None,
+        risk_tier: str | None = None,
+        strategy_id: str | None = None,
     ) -> None:
         self.login = login
         self.password = password
@@ -39,9 +45,18 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.daily_loss_fraction = daily_loss_fraction
         self.log_path = Path(log_path)
         self.summary_path = Path(summary_path)
+        self.session_id = session_id or ""
+        self.risk_env = (risk_env or "").lower()
+        self.risk_tier = (risk_tier or "").lower()
+        self.default_strategy_id = strategy_id or DEFAULT_STRATEGY_ID
+        self.data_mode = "historical" if dry_run else "live"
         self.positions: Dict[str, ExecutionPosition] = {}
         self.current_equity = 0.0
         self.initial_equity = 0.0
+        self.starting_equity = 0.0
+        self.ending_equity = 0.0
+        self.starting_balance = 0.0
+        self.ending_balance = 0.0
         self.daily_start_equity = 0.0
         self.daily_realized = 0.0
         self.trade_records: list[dict] = []
@@ -54,7 +69,20 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
     def connect(self) -> None:
         if self.connected:
             return
-        if not mt5.initialize():
+        init_kwargs: dict[str, object] = {}
+        if self.login is not None:
+            # Pass credentials into initialize so headless terminals authorize correctly.
+            init_kwargs["login"] = self.login
+            if self.password is not None:
+                init_kwargs["password"] = self.password
+            if self.server is not None:
+                init_kwargs["server"] = self.server
+        try:
+            initialized = mt5.initialize(**init_kwargs)
+        except TypeError:
+            # Older MetaTrader5 stubs (unit tests) may not accept keyword args; fall back to legacy call.
+            initialized = mt5.initialize()
+        if not initialized:
             raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
         if self.login is not None:
             if not mt5.login(login=self.login, password=self.password, server=self.server):
@@ -62,10 +90,16 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         info = mt5.account_info()
         if info is None:
             raise RuntimeError("MT5 account_info() returned None.")
-        self.initial_equity = float(info.equity or info.balance or 0.0)
-        if self.initial_equity <= 0:
+        start_equity = float(getattr(info, 'equity', None) or getattr(info, 'balance', None) or 0.0)
+        if start_equity <= 0:
             raise RuntimeError("MT5 account has non-positive equity.")
-        self.current_equity = self.initial_equity
+        self.initial_equity = start_equity
+        self.starting_equity = start_equity
+        self.current_equity = start_equity
+        self.ending_equity = start_equity
+        start_balance = float(getattr(info, 'balance', None) or start_equity)
+        self.starting_balance = start_balance
+        self.ending_balance = start_balance
         self.daily_start_equity = self.initial_equity
         self.daily_realized = 0.0
         self._ensure_log_header()
@@ -73,6 +107,13 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
 
     def disconnect(self) -> None:
         if self.connected:
+            info = mt5.account_info()
+            if info is not None:
+                ending_equity = float(getattr(info, 'equity', None) or self.current_equity)
+                ending_balance = float(getattr(info, 'balance', None) or ending_equity)
+                self.ending_equity = ending_equity
+                self.ending_balance = ending_balance
+                self.current_equity = ending_equity
             mt5.shutdown()
         self.connected = False
         self.save_summary()
@@ -128,7 +169,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 self._record_filtered_event(order, entry_price, stop_loss, take_profit, risk_amount, "invalid_stops")
                 return None
             if result is None or retcode != mt5.TRADE_RETCODE_DONE:
-                raise RuntimeError(f"MT5 order_send failed: {result}")
+                last_error = mt5.last_error()
+                raise RuntimeError(f"MT5 order_send failed: {result} (last_error={last_error})")
             ticket = str(getattr(result, "order", ticket))
         position = ExecutionPosition(
             ticket=ticket,
@@ -141,6 +183,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             opened_at=timestamp,
             tag=order.tag,
             max_loss_amount=risk_amount,
+            signal_reason=str(order.metadata.get("signal_reason") or order.tag),
+            strategy_id=order.strategy_id or self.default_strategy_id,
         )
         self.positions[ticket] = position
         self._log_event(timestamp, "OPEN", position, entry_price, order.tag)
@@ -163,7 +207,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             close_request = self._build_close_request(position, exit_price)
             result = mt5.order_send(close_request)
             if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
-                raise RuntimeError(f"Failed to close {ticket}: {result}")
+                raise RuntimeError(f"Failed to close {ticket}: {result} (last_error={mt5.last_error()})")
         pnl = self._pnl_for_position(position, exit_price)
         self.current_equity += pnl
         if pnl < 0:
@@ -181,6 +225,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 "closed_at": event_time.isoformat(),
                 "reason": reason,
                 "pnl": pnl,
+                "signal_reason": position.signal_reason,
+                "strategy_id": position.strategy_id,
             }
         )
         self._log_event(event_time, "CLOSE", position, exit_price, reason)
@@ -288,6 +334,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             opened_at=timestamp,
             tag=order.tag,
             max_loss_amount=risk_amount,
+            signal_reason=str(order.metadata.get("signal_reason") or order.tag),
+            strategy_id=order.strategy_id or self.default_strategy_id,
         )
         self._log_event(timestamp, "FILTER", pseudo_position, entry_price, reason)
 
@@ -329,7 +377,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "tp": take_profit,
             "deviation": 10,
             "magic": 0,
-            "comment": order.tag,
+            "comment": self._build_comment(order.tag),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_FOK,
         }
@@ -345,10 +393,18 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "price": price,
             "deviation": 20,
             "magic": 0,
-            "comment": "CLOSE",
+            "comment": self._build_comment("CLOSE"),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_FOK,
         }
+
+    def _build_comment(self, default_tag: str) -> str:
+        if not self.session_id:
+            return default_tag
+        comment = self.session_id
+        if len(comment) > 29:
+            return comment[:29]
+        return comment
 
     def _safe_int(self, ticket: str) -> int:
         try:
@@ -366,34 +422,93 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
     def _log_event(self, timestamp: datetime, event: str, position: ExecutionPosition, price: float, reason: str) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         file_exists = self.log_path.exists()
+        header = (
+            "timestamp,event,session_id,strategy_id,ticket,symbol,direction,volume,price,reason,signal_reason,equity,data_mode\\n"
+        )
         with self.log_path.open("a", encoding="utf-8") as fh:
             if not file_exists:
-                fh.write("timestamp,event,ticket,symbol,direction,volume,price,reason,equity\n")
+                fh.write(header)
+            session_value = self.session_id or ""
+            signal_value = getattr(position, "signal_reason", "")
             fh.write(
-                f"{timestamp.isoformat()},{event},{position.ticket},{position.symbol},"
-                f"{position.direction},{position.volume:.2f},{price:.5f},{reason},{self.current_equity:.2f}\n"
+                f"{timestamp.isoformat()},{event},{session_value},{position.strategy_id},{position.ticket},{position.symbol},"
+                f"{position.direction},{position.volume:.2f},{price:.5f},{reason},{signal_value},{self.current_equity:.2f},{self.data_mode}\n"
             )
 
     def _ensure_log_header(self) -> None:
-        if self.log_path.exists():
-            return
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        self.log_path.write_text("timestamp,event,ticket,symbol,direction,volume,price,reason,equity\n")
-
-    # --------------------------------------------------------------- Summary ---
-
+        columns = [
+            "timestamp",
+            "event",
+            "session_id",
+            "strategy_id",
+            "ticket",
+            "symbol",
+            "direction",
+            "volume",
+            "price",
+            "reason",
+            "signal_reason",
+            "equity",
+            "data_mode",
+        ]
+        header_line = ",".join(columns)
+        if not self.log_path.exists():
+            self.log_path.write_text(header_line + "\n")
+            return
+        with self.log_path.open("r", encoding="utf-8", newline="") as fh:
+            dict_reader = csv.DictReader(fh)
+            rows = list(dict_reader)
+            existing_cols = dict_reader.fieldnames or []
+        if not existing_cols:
+            self.log_path.write_text(header_line + "\n")
+            return
+        normalized = [col.strip() for col in existing_cols]
+        if normalized == columns:
+            return
+        with self.log_path.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=columns)
+            writer.writeheader()
+            for row in rows:
+                strategy_value = row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID
+                writer.writerow({
+                    "timestamp": row.get("timestamp", ""),
+                    "event": row.get("event", ""),
+                    "session_id": row.get("session_id", ""),
+                    "strategy_id": strategy_value,
+                    "ticket": row.get("ticket", ""),
+                    "symbol": row.get("symbol", ""),
+                    "direction": row.get("direction", ""),
+                    "volume": row.get("volume", ""),
+                    "price": row.get("price", ""),
+                    "reason": row.get("reason", ""),
+                    "signal_reason": row.get("signal_reason", ""),
+                    "equity": row.get("equity", ""),
+                    "data_mode": row.get("data_mode", "live"),
+                })
     def save_summary(self) -> None:
         self.summary_path.parent.mkdir(parents=True, exist_ok=True)
         self.summary_path.write_text(json.dumps(self.summary(), indent=2))
 
     def summary(self) -> dict:
+        strategy_stats = self._compute_strategy_stats()
         wins = sum(1 for trade in self.trade_records if trade["pnl"] > 0)
         total = len(self.trade_records)
         daily_loss = max(0.0, -self.daily_realized)
+        signal_counts: dict[str, int] = {}
+        for trade in self.trade_records:
+            label = str(trade.get("signal_reason") or "unknown")
+            signal_counts[label] = signal_counts.get(label, 0) + 1
         return {
             "dry_run": self.dry_run,
             "initial_equity": self.initial_equity,
             "final_equity": self.current_equity,
+            "starting_equity": self.starting_equity,
+            "ending_equity": self.ending_equity or self.current_equity,
+            "session_start_equity": self.starting_equity or self.initial_equity,
+            "session_end_equity": self.ending_equity or self.current_equity,
+            "starting_balance": self.starting_balance,
+            "ending_balance": self.ending_balance or self.starting_balance,
             "number_of_trades": total,
             "win_rate": wins / total if total else 0.0,
             "max_open_positions": self.max_positions,
@@ -401,6 +516,31 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "daily_loss_fraction": self.daily_loss_fraction,
             "daily_realized_loss": daily_loss,
             "filtered_max_positions": self.filter_counters.get("max_positions", 0),
+            "risk_env": self.risk_env,
+            "session_id": self.session_id,
+            "strategy_id": self.default_strategy_id,
             "filtered_daily_loss": self.filter_counters.get("daily_loss", 0),
             "filtered_invalid_stops": self.filter_counters.get("invalid_stops", 0),
+            "signal_reason_counts": signal_counts,
+            "session_pnl": (self.ending_equity or self.current_equity) - (self.starting_equity or self.initial_equity),
+            "session_balance_pnl": (self.ending_balance or self.starting_balance) - self.starting_balance,
+            "per_strategy": strategy_stats,
         }
+
+    def _compute_strategy_stats(self) -> dict[str, dict]:
+        stats: dict[str, dict] = {}
+        for trade in self.trade_records:
+            strategy_id = trade.get("strategy_id") or self.default_strategy_id
+            entry = stats.setdefault(strategy_id, {"trades": 0, "wins": 0, "pnl": 0.0})
+            entry["trades"] += 1
+            pnl_value = float(trade.get("pnl", 0.0) or 0.0)
+            entry["pnl"] += pnl_value
+            if pnl_value > 0:
+                entry["wins"] += 1
+        for entry in stats.values():
+            trades = entry["trades"]
+            wins = entry.pop("wins")
+            entry["win_rate"] = (wins / trades) if trades else 0.0
+            entry["avg_pnl_per_trade"] = (entry["pnl"] / trades) if trades else 0.0
+        return stats
+

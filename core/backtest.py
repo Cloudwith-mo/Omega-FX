@@ -29,6 +29,7 @@ from config.settings import (
     SymbolConfig,
 )
 from core.filters import TradeFilterResult, TradeTags, should_allow_trade
+from core.constants import DEFAULT_STRATEGY_ID
 from core.risk import (
     RISK_PROFILES,
     ModeTransition,
@@ -98,8 +99,10 @@ class ActivePosition:
     pattern_tag: str = ""
     risk_scale: float = 1.0
     risk_tier: str = "UNKNOWN"
+    signal_reason: str = "unknown"
     entry_timeframe: str = "H1"
     unrealized_pnl: float = 0.0
+    strategy_id: str = DEFAULT_STRATEGY_ID
 
     @property
     def max_loss_amount(self) -> float:
@@ -183,6 +186,19 @@ def _session_tag(timestamp: pd.Timestamp) -> str:
     if 8 <= hour < 16:
         return "LONDON"
     return "NY"
+
+
+
+def _derive_signal_reason(signal, pattern_tag: str | None) -> str:
+    if pattern_tag == "breakout_v1":
+        return "breakout_pullback"
+    if pattern_tag:
+        return pattern_tag
+    reason = getattr(signal, "signal_reason", None)
+    if reason and reason not in {"unknown", "no_signal", "insufficient_data"}:
+        return reason
+    return "unknown"
+
 
 
 def _volatility_regime(atr_value: float | float, low: float, high: float) -> str:
@@ -832,6 +848,8 @@ def run_backtest(
                             "r_multiple": r_multiple,
                             "risk_scale": position.risk_scale,
                             "risk_tier": position.risk_tier,
+                            "signal_reason": position.signal_reason,
+                            "strategy_id": position.strategy_id,
                         }
                     )
                     open_positions.remove(position)
@@ -957,6 +975,7 @@ def run_backtest(
                     challenge=challenge,
                     firm_profile=firm_profile_cfg,
                 ):
+                    signal_reason = _derive_signal_reason(signal, pattern_tag)
                     new_position = ActivePosition(
                         symbol=event.symbol,
                         direction=signal.action,
@@ -978,7 +997,9 @@ def run_backtest(
                         risk_scale=risk_scale,
                         risk_tier=risk_tier,
                         pattern_tag=pattern_tag,
+                        signal_reason=signal_reason,
                         entry_timeframe=event.timeframe,
+                        strategy_id=signal.strategy_id,
                     )
                     open_positions.append(new_position)
     
@@ -1023,6 +1044,8 @@ def run_backtest(
                             "r_multiple": r_multiple,
                             "risk_scale": position.risk_scale,
                             "risk_tier": position.risk_tier,
+                            "signal_reason": position.signal_reason,
+                            "strategy_id": position.strategy_id,
                         }
                     )
                     open_positions.remove(position)

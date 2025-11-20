@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.constants import DEFAULT_STRATEGY_ID
+
 
 @dataclass
 class OrderSpec:
@@ -22,6 +24,7 @@ class OrderSpec:
     timestamp: Optional[datetime] = None
     tag: str = "OMEGA_FX"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    strategy_id: str = DEFAULT_STRATEGY_ID
 
 
 @dataclass
@@ -38,6 +41,8 @@ class ExecutionPosition:
     opened_at: datetime
     tag: str
     max_loss_amount: float = 0.0
+    signal_reason: str = ""
+    strategy_id: str = DEFAULT_STRATEGY_ID
 
 
 class ExecutionBackend(ABC):

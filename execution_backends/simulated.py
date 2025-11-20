@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from core.constants import DEFAULT_STRATEGY_ID
+
 from core.execution_base import ExecutionBackend, ExecutionPosition, OrderSpec
 from core.position_sizing import get_symbol_meta
 
@@ -50,6 +52,7 @@ class SimulatedExecutionBackend(ExecutionBackend):
                     [
                         "timestamp",
                         "event",
+                        "strategy_id",
                         "ticket",
                         "symbol",
                         "direction",
@@ -99,6 +102,8 @@ class SimulatedExecutionBackend(ExecutionBackend):
             opened_at=timestamp,
             tag=order.tag,
             max_loss_amount=risk_amount,
+            signal_reason=str(order.metadata.get("signal_reason") or order.tag),
+            strategy_id=order.strategy_id or DEFAULT_STRATEGY_ID,
         )
         self.positions[ticket] = position
         self._write_row(timestamp, "OPEN", position, price=position.entry_price, reason=order.tag)
@@ -159,6 +164,7 @@ class SimulatedExecutionBackend(ExecutionBackend):
                 [
                     timestamp.isoformat(),
                     event,
+                    position.strategy_id,
                     position.ticket,
                     position.symbol,
                     position.direction,
@@ -202,6 +208,8 @@ class SimulatedExecutionBackend(ExecutionBackend):
             opened_at=timestamp,
             tag=order.tag,
             max_loss_amount=risk_amount,
+            signal_reason=str(order.metadata.get("signal_reason") or order.tag),
+            strategy_id=order.strategy_id or DEFAULT_STRATEGY_ID,
         )
         self._write_row(timestamp, "FILTER", pseudo_position, price=entry_price, reason=limit_reason)
 
