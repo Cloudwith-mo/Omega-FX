@@ -8,10 +8,10 @@ import csv
 import os
 import sys
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -47,19 +47,42 @@ class AggregateRow:
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Download forex aggregates from Massive.com")
-    parser.add_argument("--api-key", type=str, default=None, help="Massive API key (falls back to MASSIVE_API_KEY env).")
-    parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS), help="Symbols like EURUSD GBPUSD USDJPY.")
+    parser = argparse.ArgumentParser(
+        description="Download forex aggregates from Massive.com"
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="Massive API key (falls back to MASSIVE_API_KEY env).",
+    )
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        default=list(DEFAULT_SYMBOLS),
+        help="Symbols like EURUSD GBPUSD USDJPY.",
+    )
     parser.add_argument(
         "--timeframes",
         nargs="+",
         default=["M15", "H1", "H4"],
         help="Timeframe codes matching Omega config (e.g. M15 H1 H4).",
     )
-    parser.add_argument("--start-date", type=str, required=True, help="Start date (YYYY-MM-DD).")
-    parser.add_argument("--end-date", type=str, required=True, help="End date (YYYY-MM-DD).")
-    parser.add_argument("--output-dir", type=Path, default=Path("data"), help="Directory for CSV outputs.")
-    parser.add_argument("--force", action="store_true", help="Overwrite existing CSV files.")
+    parser.add_argument(
+        "--start-date", type=str, required=True, help="Start date (YYYY-MM-DD)."
+    )
+    parser.add_argument(
+        "--end-date", type=str, required=True, help="End date (YYYY-MM-DD)."
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data"),
+        help="Directory for CSV outputs.",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing CSV files."
+    )
     return parser.parse_args(argv)
 
 
@@ -115,7 +138,9 @@ def fetch_aggregates(
     adjusted: bool = True,
 ) -> list[AggregateRow]:
     if timeframe not in TIMEFRAME_MAP:
-        raise ValueError(f"Unsupported timeframe '{timeframe}'. Valid: {', '.join(TIMEFRAME_MAP)}")
+        raise ValueError(
+            f"Unsupported timeframe '{timeframe}'. Valid: {', '.join(TIMEFRAME_MAP)}"
+        )
     timespan, multiplier, chunk_days = TIMEFRAME_MAP[timeframe]
     results: list[AggregateRow] = []
     for chunk_start, chunk_end in chunked_ranges(start, end, chunk_days):
@@ -163,7 +188,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     api_key = args.api_key or os.environ.get("MASSIVE_API_KEY")
     if not api_key:
-        print("[!] Provide --api-key or set MASSIVE_API_KEY in the environment.", file=sys.stderr)
+        print(
+            "[!] Provide --api-key or set MASSIVE_API_KEY in the environment.",
+            file=sys.stderr,
+        )
         return 1
     try:
         start_date = date.fromisoformat(args.start_date)
@@ -180,10 +208,14 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     for symbol in symbols:
         for timeframe in timeframes:
-            print(f"[+] Fetching {symbol} {timeframe} from {start_date} to {end_date} ...")
+            print(
+                f"[+] Fetching {symbol} {timeframe} from {start_date} to {end_date} ..."
+            )
             rows = fetch_aggregates(symbol, timeframe, start_date, end_date, api_key)
             if not rows:
-                print(f"[!] No data returned for {symbol} {timeframe}.", file=sys.stderr)
+                print(
+                    f"[!] No data returned for {symbol} {timeframe}.", file=sys.stderr
+                )
                 continue
             output_name = f"{symbol}_{timeframe}.csv"
             output_path = (args.output_dir / output_name).resolve()

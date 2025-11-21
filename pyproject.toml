@@ -1,0 +1,60 @@
+# pyproject.toml
+
+[tool.ruff]
+# Assume Python 3.10+
+target-version = "py310"
+
+# Set line length to 88, same as Black
+line-length = 88
+
+# Exclude common directories from linting and formatting
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "results",
+    "raw_data",
+    "data/examples"
+]
+
+[tool.ruff.lint]
+# Enable the default set of rules, equivalent to flake8
+# For a full list of rules, see: https://docs.astral.sh/ruff/rules/
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = []
+
+# Allow unused variables in __init__.py files
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+# Use black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

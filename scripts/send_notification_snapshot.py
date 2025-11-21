@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Send the most recent notification snapshot to Telegram."""
 
 from __future__ import annotations
@@ -10,7 +10,9 @@ from core.notifications import send_telegram_message
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Send notification snapshot via Telegram.")
+    parser = argparse.ArgumentParser(
+        description="Send notification snapshot via Telegram."
+    )
     parser.add_argument("--tag", type=str, default="demo")
     parser.add_argument(
         "--snapshot-path",
@@ -29,9 +31,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    snapshot_path = args.snapshot_path or Path(f"results/notification_snapshot_{args.tag}.txt")
+    snapshot_path = args.snapshot_path or Path(
+        f"results/notification_snapshot_{args.tag}.txt"
+    )
     if not snapshot_path.exists():
-        raise FileNotFoundError(f"Snapshot file {snapshot_path} not found. Run build_notification_snapshot first.")
+        raise FileNotFoundError(
+            f"Snapshot file {snapshot_path} not found. Run build_notification_snapshot first."
+        )
     text = snapshot_path.read_text(encoding="utf-8").strip()
     if not text:
         raise ValueError(f"Snapshot file {snapshot_path} is empty.")

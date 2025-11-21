@@ -7,9 +7,8 @@ import argparse
 import json
 import os
 import sys
-from datetime import timedelta
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -79,13 +78,20 @@ def _normalize_timeseries(payload: dict, symbol: str) -> pd.DataFrame:
                 }
             )
         except (TypeError, ValueError) as exc:
-            raise RuntimeError(f"Failed parsing row for {symbol} at {ts}: {exc}") from exc
+            raise RuntimeError(
+                f"Failed parsing row for {symbol} at {ts}: {exc}"
+            ) from exc
 
     df = pd.DataFrame(rows)
     if df.empty:
         raise RuntimeError(f"No data returned for {symbol}.")
 
-    df = df.dropna().drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+    df = (
+        df.dropna()
+        .drop_duplicates(subset=["timestamp"])
+        .sort_values("timestamp")
+        .reset_index(drop=True)
+    )
     return df
 
 
@@ -97,10 +103,16 @@ def _validate_cadence(df: pd.DataFrame, symbol: str) -> None:
         return
     median_delta = deltas.median()
     if abs(median_delta - pd.Timedelta(hours=1)) > pd.Timedelta(minutes=5):
-        print(f"[!] Warning: {symbol} median interval {median_delta} deviates from 1 hour.", file=sys.stderr)
+        print(
+            f"[!] Warning: {symbol} median interval {median_delta} deviates from 1 hour.",
+            file=sys.stderr,
+        )
     irregular = deltas[(deltas != pd.Timedelta(hours=1))]
     if not irregular.empty:
-        print(f"[!] {symbol} contains {len(irregular)} irregular intervals.", file=sys.stderr)
+        print(
+            f"[!] {symbol} contains {len(irregular)} irregular intervals.",
+            file=sys.stderr,
+        )
 
 
 def _save_dataframe(df: pd.DataFrame, destination: Path, force: bool) -> None:
@@ -112,7 +124,9 @@ def _save_dataframe(df: pd.DataFrame, destination: Path, force: bool) -> None:
 
 def download_symbol(symbol: str, api_key: str, output_dir: Path, force: bool) -> Path:
     if symbol not in SYMBOL_MAP:
-        raise ValueError(f"Unsupported symbol '{symbol}'. Supported: {', '.join(SYMBOL_MAP)}")
+        raise ValueError(
+            f"Unsupported symbol '{symbol}'. Supported: {', '.join(SYMBOL_MAP)}"
+        )
 
     url = _build_url(symbol, api_key)
     payload = _fetch_json(url)
@@ -135,9 +149,18 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         action="append",
         help="Symbol to download (can be repeated). Choices: EURUSD, GBPUSD, USDJPY.",
     )
-    parser.add_argument("--all", action="store_true", help="Download all supported symbols.")
-    parser.add_argument("--output_dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Directory for normalized CSVs.")
-    parser.add_argument("--force", action="store_true", help="Overwrite existing files.")
+    parser.add_argument(
+        "--all", action="store_true", help="Download all supported symbols."
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help="Directory for normalized CSVs.",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing files."
+    )
     return parser.parse_args(argv)
 
 

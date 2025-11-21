@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 try:
     import MetaTrader5 as mt5  # type: ignore
@@ -11,9 +11,9 @@ except ImportError:  # pragma: no cover - optional dependency in CI
 MISSING_MT5_ERROR = "MetaTrader5 module unavailable"
 
 
-def fetch_open_positions_snapshot() -> Dict[str, Any]:
+def fetch_open_positions_snapshot() -> dict[str, Any]:
     """Return a snapshot of currently open MT5 positions."""
-    snapshot: Dict[str, Any] = {
+    snapshot: dict[str, Any] = {
         "count": 0,
         "total_pnl": 0.0,
         "error": None,
@@ -35,7 +35,10 @@ def fetch_open_positions_snapshot() -> Dict[str, Any]:
             return snapshot
         snapshot["connected"] = True
         snapshot["count"] = len(positions)
-        snapshot["total_pnl"] = sum(float(getattr(pos, "profit", 0.0) or 0.0) for pos in positions)
+        snapshot["total_pnl"] = sum(
+            float(getattr(pos, "profit", 0.0) or 0.0)
+            for pos in positions
+        )
         return snapshot
     except Exception as exc:  # pragma: no cover - MT5 runtime errors
         snapshot["error"] = str(exc)

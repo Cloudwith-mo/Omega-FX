@@ -23,8 +23,15 @@ from execution_backends.simulated import SimulatedExecutionBackend  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Simulated execution replay using Omega signals.")
-    parser.add_argument("--starting_equity", type=float, default=100_000.0, help="Initial equity for sizing.")
+    parser = argparse.ArgumentParser(
+        description="Simulated execution replay using Omega signals."
+    )
+    parser.add_argument(
+        "--starting_equity",
+        type=float,
+        default=100_000.0,
+        help="Initial equity for sizing.",
+    )
     parser.add_argument(
         "--limit_trades",
         type=int,
@@ -43,7 +50,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("results/execution_sim_log.csv"),
         help="CSV log path for simulated fills.",
     )
-    parser.add_argument("--max_positions", type=int, default=2, help="Maximum concurrent positions for the sim backend.")
+    parser.add_argument(
+        "--max_positions",
+        type=int,
+        default=2,
+        help="Maximum concurrent positions for the sim backend.",
+    )
     parser.add_argument(
         "--risk_fraction",
         type=float,
@@ -95,7 +107,9 @@ def main() -> int:
         if kind == "open":
             risk_mode = RiskMode(trade["risk_mode_at_entry"])
             base_fraction = RISK_PROFILES[risk_mode].risk_per_trade_fraction
-            risk_fraction = base_fraction * float(trade.get("risk_scale", 1.0)) * args.risk_fraction
+            risk_fraction = (
+                base_fraction * float(trade.get("risk_scale", 1.0)) * args.risk_fraction
+            )
             if risk_fraction <= 0:
                 continue
             try:
@@ -138,9 +152,15 @@ def main() -> int:
                 break
 
     summary = backend.summary()
-    summary["filtered_max_positions"] = max(summary.get("filtered_max_positions", 0), filtered_counts["max_positions"])
-    summary["filtered_daily_loss"] = max(summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"])
-    summary["filtered_invalid_stops"] = max(summary.get("filtered_invalid_stops", 0), filtered_counts["invalid_stops"])
+    summary["filtered_max_positions"] = max(
+        summary.get("filtered_max_positions", 0), filtered_counts["max_positions"]
+    )
+    summary["filtered_daily_loss"] = max(
+        summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"]
+    )
+    summary["filtered_invalid_stops"] = max(
+        summary.get("filtered_invalid_stops", 0), filtered_counts["invalid_stops"]
+    )
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
@@ -153,7 +173,9 @@ def _to_datetime(value) -> pd.Timestamp:
     return pd.to_datetime(value).to_pydatetime()
 
 
-def _update_filtered_counts(backend: SimulatedExecutionBackend, counters: dict[str, int]) -> None:
+def _update_filtered_counts(
+    backend: SimulatedExecutionBackend, counters: dict[str, int]
+) -> None:
     reason = getattr(backend, "last_limit_reason", None)
     if reason in counters:
         counters[reason] += 1

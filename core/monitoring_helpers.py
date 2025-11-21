@@ -5,14 +5,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from core.mt5_state import fetch_open_positions_snapshot
 from core.constants import DEFAULT_STRATEGY_ID
+from core.mt5_state import fetch_open_positions_snapshot
 from scripts.run_daily_exec_report import (
     DEFAULT_SUMMARY_PATH,
     _summarize_window,
     read_latest_risk_env,
     read_latest_risk_tier,
-    read_latest_session_id,
 )
 
 DEFAULT_LOG_PATH = Path("results/mt5_demo_exec_log.csv")
@@ -28,6 +27,7 @@ STRATEGY_FAMILY_HINTS = {
 
 def _infer_strategy_family(strategy_id: str) -> str:
     return STRATEGY_FAMILY_HINTS.get(strategy_id, "unknown")
+
 
 def load_summary(path: Path = DEFAULT_SUMMARY_PATH) -> dict[str, Any]:
     if path.exists():
@@ -59,7 +59,9 @@ def compute_report_stats(
     summary_source = summary_data
     if summary_source is None and (session_only or session_id):
         candidate = load_summary(summary_path)
-        if candidate and (session_id is None or candidate.get("session_id") == session_id):
+        if candidate and (
+            session_id is None or candidate.get("session_id") == session_id
+        ):
             summary_source = candidate
     return _summarize_window(
         log_path,
@@ -89,7 +91,6 @@ def build_status_payload(
     )
     open_positions = fetch_open_positions_snapshot()
 
-
     def _pick(*values: Any) -> Any:
         for candidate in values:
             if candidate is not None:
@@ -111,7 +112,9 @@ def build_status_payload(
         stats.get("end_equity"),
         session_start_equity,
     )
-    session_end_equity = float(session_end_equity if session_end_equity is not None else session_start_equity)
+    session_end_equity = float(
+        session_end_equity if session_end_equity is not None else session_start_equity
+    )
     session_pnl = summary.get("session_pnl")
     if session_pnl is None:
         session_pnl = session_end_equity - session_start_equity
@@ -157,18 +160,24 @@ def build_status_payload(
             )
         except FileNotFoundError:
             session_stats = None
-    expected_latest = summary.get("active_strategies") or (session_stats.get("active_strategies") if session_stats else None) or [DEFAULT_STRATEGY_ID]
+    expected_latest = (
+        summary.get("active_strategies")
+        or (session_stats.get("active_strategies") if session_stats else None)
+        or [DEFAULT_STRATEGY_ID]
+    )
     strategy_breakdown_latest = build_strategy_breakdown_entries(
         summary.get("per_strategy"),
         session_stats.get("strategy_breakdown") if session_stats else None,
         expected_ids=list(dict.fromkeys(expected_latest)),
     )
-    expected_report = stats.get("active_strategies") or summary.get("active_strategies") or expected_latest
-    strategy_breakdown_report = build_strategy_breakdown_entries(
-        stats.get("strategy_breakdown"),
-        expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
+        strategy_breakdown_report = build_strategy_breakdown_entries(
+            stats.get("strategy_breakdown"),
+            expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
+    primary_strategy_id = summary.get("strategy_id") or (
+        strategy_breakdown_latest[0]["strategy_id"]
+        if strategy_breakdown_latest
+        else DEFAULT_STRATEGY_ID
     )
-    primary_strategy_id = summary.get("strategy_id") or (strategy_breakdown_latest[0]["strategy_id"] if strategy_breakdown_latest else DEFAULT_STRATEGY_ID)
     payload = {
         "equity": session_end_equity,
         "account_equity": session_end_equity,
@@ -236,9 +245,9 @@ def _build_reconciliation_payload(
     }
 
 
-
-
-def build_strategy_breakdown_entries(*sources: Any, expected_ids: list[str] | None = None) -> list[dict[str, Any]]:
+def build_strategy_breakdown_entries(
+    *sources: Any, expected_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
     buckets: dict[str, dict[str, Any]] = {}
     for source in sources:
         if not source:
@@ -300,6 +309,7 @@ def _coerce_strategy_entry(strategy_id: str, payload: dict[str, Any]) -> dict[st
         "avg_pnl": avg_pnl,
     }
 
+
 def serialize_trades(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
     serialized: list[dict[str, Any]] = []
     for trade in trades:
@@ -333,20 +343,33 @@ def build_report_payload(
     env_label = read_latest_risk_env(summary_path)
     window_start = stats.get("window_start")
     window_end = stats.get("window_end")
-    expected_report = stats.get("active_strategies") or (summary.get("active_strategies") if summary else None)
+    expected_report = stats.get("active_strategies") or (
+        summary.get("active_strategies") if summary else None
+    )
     strategy_breakdown_report = build_strategy_breakdown_entries(
         stats.get("strategy_breakdown"),
         expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
     )
-    primary_strategy_id = stats.get("strategy_id") or (strategy_breakdown_report[0]["strategy_id"] if strategy_breakdown_report else DEFAULT_STRATEGY_ID)
+    )
+    primary_strategy_id = stats.get("strategy_id") or (
+        strategy_breakdown_report[0]["strategy_id"]
+        if strategy_breakdown_report
+        else DEFAULT_STRATEGY_ID
+    )
     payload = {
-        "window_start": window_start.isoformat() if isinstance(window_start, datetime) else str(window_start),
-        "window_end": window_end.isoformat() if isinstance(window_end, datetime) else str(window_end),
+        "window_start": window_start.isoformat()
+        if isinstance(window_start, datetime)
+        else str(window_start),
+        "window_end": window_end.isoformat()
+        if isinstance(window_end, datetime)
+        else str(window_end),
         "start_equity": stats.get("start_equity", 0.0),
         "end_equity": stats.get("end_equity", 0.0),
         "pnl": stats.get("pnl", 0.0),
         "pnl_pct": stats.get("pnl_pct", 0.0),
-        "start_balance": stats.get("start_balance", stats.get("start_equity", 0.0)),
+        "start_balance": stats.get(
+            "start_balance", stats.get("start_equity", 0.0)
+        ),
         "end_balance": stats.get("end_balance", stats.get("end_equity", 0.0)),
         "balance_pnl": stats.get("balance_pnl", stats.get("pnl", 0.0)),
         "balance_pnl_pct": stats.get("balance_pnl_pct", 0.0),
@@ -362,4 +385,3 @@ def build_report_payload(
         "strategy_breakdown": strategy_breakdown_report,
     }
     return payload
-

@@ -28,4 +28,3 @@ FTMO_EVAL_PRESET = DeploymentPreset(
     max_concurrent_positions=_FTMO_PROFILE.max_concurrent_positions,
     description="Phase 4 FTMO evaluation preset (M15_WITH_H1_CTX, FULL risk, 2 concurrent positions).",
 )
-

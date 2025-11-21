@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
-from typing import Dict, List, Type
 
 
 @dataclass(frozen=True)
@@ -10,7 +10,7 @@ class StrategySpec:
 
     tag: str
     namespace: str
-    cls: Type
+    cls: type
     description: str = ""
 
 
@@ -18,18 +18,23 @@ class StrategyRegistry:
     """Simple registry mapping strategy tags to implementations."""
 
     def __init__(self) -> None:
-        self._registry: Dict[str, StrategySpec] = {}
+        self._registry: dict[str, StrategySpec] = {}
 
     def register(
         self,
         tag: str,
         *,
         namespace: str,
-        cls: Type,
+        cls: type,
         description: str = "",
     ) -> StrategySpec:
         key = tag.lower()
-        spec = StrategySpec(tag=key, namespace=namespace, cls=cls, description=description)
+        spec = StrategySpec(
+            tag=key,
+            namespace=namespace,
+            cls=cls,
+            description=description,
+        )
         self._registry[key] = spec
         return spec
 
@@ -39,26 +44,30 @@ class StrategyRegistry:
             raise KeyError(f"Strategy '{tag}' is not registered.")
         return self._registry[key]
 
-    def list(self) -> List[StrategySpec]:
+    def list(self) -> builtins.list[StrategySpec]:
         return list(self._registry.values())
 
 
 _registry = StrategyRegistry()
 
 
-def register_strategy(tag: str, *, namespace: str, cls: Type, description: str = "") -> StrategySpec:
-    return _registry.register(tag, namespace=namespace, cls=cls, description=description)
+def register_strategy(
+    tag: str, *, namespace: str, cls: type, description: str = ""
+) -> StrategySpec:
+    return _registry.register(
+        tag, namespace=namespace, cls=cls, description=description
+    )
 
 
 def get_strategy_spec(tag: str) -> StrategySpec:
     return _registry.get(tag)
 
 
-def get_strategy_class(tag: str) -> Type:
+def get_strategy_class(tag: str) -> type:
     return get_strategy_spec(tag).cls
 
 
-def list_strategies() -> List[StrategySpec]:
+def list_strategies() -> list[StrategySpec]:
     return _registry.list()
 
 

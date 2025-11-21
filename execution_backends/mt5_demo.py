@@ -5,9 +5,8 @@ from __future__ import annotations
 import csv
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
 
 import MetaTrader5 as mt5  # type: ignore
 
@@ -55,7 +54,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             base_ids.extend(active_strategy_ids)
         self.active_strategy_ids = set(base_ids)
         self.data_mode = "historical" if dry_run else "live"
-        self.positions: Dict[str, ExecutionPosition] = {}
+        self.positions: dict[str, ExecutionPosition] = {}
         self.current_equity = 0.0
         self.initial_equity = 0.0
         self.starting_equity = 0.0
@@ -66,7 +65,11 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.daily_realized = 0.0
         self.trade_records: list[dict] = []
         self.connected = False
-        self.filter_counters: dict[str, int] = {"max_positions": 0, "daily_loss": 0, "invalid_stops": 0}
+        self.filter_counters: dict[str, int] = {
+            "max_positions": 0,
+            "daily_loss": 0,
+            "invalid_stops": 0,
+        }
         self.last_limit_reason: str | None = None
 
     # ------------------------------------------------------------------ API ---
@@ -90,19 +93,23 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         if not initialized:
             raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
         if self.login is not None:
-            if not mt5.login(login=self.login, password=self.password, server=self.server):
+            if not mt5.login(
+                login=self.login, password=self.password, server=self.server
+            ):
                 raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
         info = mt5.account_info()
         if info is None:
             raise RuntimeError("MT5 account_info() returned None.")
-        start_equity = float(getattr(info, 'equity', None) or getattr(info, 'balance', None) or 0.0)
+        start_equity = float(
+            getattr(info, "equity", None) or getattr(info, "balance", None) or 0.0
+        )
         if start_equity <= 0:
             raise RuntimeError("MT5 account has non-positive equity.")
         self.initial_equity = start_equity
         self.starting_equity = start_equity
         self.current_equity = start_equity
         self.ending_equity = start_equity
-        start_balance = float(getattr(info, 'balance', None) or start_equity)
+        start_balance = float(getattr(info, "balance", None) or start_equity)
         self.starting_balance = start_balance
         self.ending_balance = start_balance
         self.daily_start_equity = self.initial_equity
@@ -114,8 +121,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         if self.connected:
             info = mt5.account_info()
             if info is not None:
-                ending_equity = float(getattr(info, 'equity', None) or self.current_equity)
-                ending_balance = float(getattr(info, 'balance', None) or ending_equity)
+                ending_equity = float(
+                    getattr(info, "equity", None) or self.current_equity
+                )
+                ending_balance = float(getattr(info, "balance", None) or ending_equity)
                 self.ending_equity = ending_equity
                 self.ending_balance = ending_balance
                 self.current_equity = ending_equity
@@ -131,7 +140,9 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 ExecutionPosition(
                     ticket=str(getattr(pos, "ticket", "")),
                     symbol=str(getattr(pos, "symbol", "")),
-                    direction="long" if getattr(pos, "type", 0) in (mt5.ORDER_TYPE_BUY,) else "short",
+                    direction="long"
+                    if getattr(pos, "type", 0) in (mt5.ORDER_TYPE_BUY,)
+                    else "short",
                     volume=float(getattr(pos, "volume", 0.0)),
                     entry_price=float(getattr(pos, "price_open", 0.0)),
                     stop_loss=float(getattr(pos, "sl", 0.0)) or None,
@@ -147,35 +158,54 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self._ensure_ready()
         if order.stop_loss is None:
             raise RuntimeError("MT5 backend requires stop-loss price.")
-        historical_entry = float(order.entry_price or self._current_price(order.symbol, order.direction))
+        historical_entry = float(
+            order.entry_price or self._current_price(order.symbol, order.direction)
+        )
         entry_price = historical_entry
         stop_loss = float(order.stop_loss)
-        take_profit = float(order.take_profit) if order.take_profit is not None else None
+        take_profit = (
+            float(order.take_profit) if order.take_profit is not None else None
+        )
         if not self.dry_run:
             entry_price, stop_loss, take_profit = self._realign_live_prices(
                 order, historical_entry, stop_loss, take_profit
             )
-        risk_amount = self._risk_amount(order.symbol, entry_price, stop_loss, order.volume)
+        risk_amount = self._risk_amount(
+            order.symbol, entry_price, stop_loss, order.volume
+        )
         self.last_limit_reason = None
         max_risk = self.per_trade_risk_fraction * self.daily_start_equity
         if risk_amount > max_risk:
             raise RuntimeError("Per-trade risk limit exceeded.")
         limit_reason = self._limit_reason(risk_amount)
         if limit_reason:
-            self._record_filtered_event(order, entry_price, stop_loss, take_profit, risk_amount, limit_reason)
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, risk_amount, limit_reason
+            )
             return None
         ticket = f"MT5-{uuid.uuid4().hex[:10]}"
         timestamp = order.timestamp or datetime.now(timezone.utc)
         if not self.dry_run:
-            request = self._build_order_request(order, entry_price, stop_loss, take_profit)
+            request = self._build_order_request(
+                order, entry_price, stop_loss, take_profit
+            )
             result = mt5.order_send(request)
             retcode = getattr(result, "retcode", None) if result is not None else None
             if retcode in (getattr(mt5, "TRADE_RETCODE_INVALID_STOPS", 10016), 10016):
-                self._record_filtered_event(order, entry_price, stop_loss, take_profit, risk_amount, "invalid_stops")
+                self._record_filtered_event(
+                    order,
+                    entry_price,
+                    stop_loss,
+                    take_profit,
+                    risk_amount,
+                    "invalid_stops",
+                )
                 return None
             if result is None or retcode != mt5.TRADE_RETCODE_DONE:
                 last_error = mt5.last_error()
-                raise RuntimeError(f"MT5 order_send failed: {result} (last_error={last_error})")
+                raise RuntimeError(
+                    f"MT5 order_send failed: {result} (last_error={last_error})"
+                )
             ticket = str(getattr(result, "order", ticket))
         position = ExecutionPosition(
             ticket=ticket,
@@ -200,8 +230,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         ticket: str,
         reason: str,
         *,
-        close_price: Optional[float] = None,
-        timestamp: Optional[datetime] = None,
+        close_price: float | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         self._ensure_ready()
         position = self.positions.pop(ticket, None)
@@ -211,8 +241,13 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         if not self.dry_run:
             close_request = self._build_close_request(position, exit_price)
             result = mt5.order_send(close_request)
-            if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
-                raise RuntimeError(f"Failed to close {ticket}: {result} (last_error={mt5.last_error()})")
+            if (
+                result is None
+                or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE
+            ):
+                raise RuntimeError(
+                    f"Failed to close {ticket}: {result} (last_error={mt5.last_error()})"
+                )
         pnl = self._pnl_for_position(position, exit_price)
         self.current_equity += pnl
         if pnl < 0:
@@ -262,9 +297,13 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
     ) -> tuple[float, float, float | None]:
         live_entry = self._current_price(order.symbol, order.direction)
         stop_offset = stop_loss - historical_entry
-        take_profit_offset = take_profit - historical_entry if take_profit is not None else None
+        take_profit_offset = (
+            take_profit - historical_entry if take_profit is not None else None
+        )
         adjusted_stop = live_entry + stop_offset
-        adjusted_tp = live_entry + take_profit_offset if take_profit_offset is not None else None
+        adjusted_tp = (
+            live_entry + take_profit_offset if take_profit_offset is not None else None
+        )
         adjusted_stop, adjusted_tp = self._respect_min_stop_distance(
             order.symbol,
             order.direction,
@@ -344,7 +383,9 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         )
         self._log_event(timestamp, "FILTER", pseudo_position, entry_price, reason)
 
-    def _risk_amount(self, symbol: str, entry: float, stop: float, volume: float) -> float:
+    def _risk_amount(
+        self, symbol: str, entry: float, stop: float, volume: float
+    ) -> float:
         meta = get_symbol_meta(symbol)
         pip_distance = abs(entry - stop) / meta.pip_size
         return pip_distance * meta.pip_value_per_standard_lot * volume
@@ -371,7 +412,9 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         stop_loss: float,
         take_profit: float | None,
     ) -> dict:
-        order_type = mt5.ORDER_TYPE_BUY if order.direction == "long" else mt5.ORDER_TYPE_SELL
+        order_type = (
+            mt5.ORDER_TYPE_BUY if order.direction == "long" else mt5.ORDER_TYPE_SELL
+        )
         return {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": order.symbol,
@@ -388,7 +431,9 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         }
 
     def _build_close_request(self, position: ExecutionPosition, price: float) -> dict:
-        order_type = mt5.ORDER_TYPE_SELL if position.direction == "long" else mt5.ORDER_TYPE_BUY
+        order_type = (
+            mt5.ORDER_TYPE_SELL if position.direction == "long" else mt5.ORDER_TYPE_BUY
+        )
         return {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": position.symbol,
@@ -417,19 +462,26 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         except (TypeError, ValueError):
             return 0
 
-    def _pnl_for_position(self, position: ExecutionPosition, exit_price: float) -> float:
+    def _pnl_for_position(
+        self, position: ExecutionPosition, exit_price: float
+    ) -> float:
         meta = get_symbol_meta(position.symbol)
         pip_distance = (exit_price - position.entry_price) / meta.pip_size
         if position.direction == "short":
             pip_distance = -pip_distance
         return pip_distance * meta.pip_value_per_standard_lot * position.volume
 
-    def _log_event(self, timestamp: datetime, event: str, position: ExecutionPosition, price: float, reason: str) -> None:
+    def _log_event(
+        self,
+        timestamp: datetime,
+        event: str,
+        position: ExecutionPosition,
+        price: float,
+        reason: str,
+    ) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         file_exists = self.log_path.exists()
-        header = (
-            "timestamp,event,session_id,strategy_id,ticket,symbol,direction,volume,price,reason,signal_reason,equity,data_mode\\n"
-        )
+        header = "timestamp,event,session_id,strategy_id,ticket,symbol,direction,volume,price,reason,signal_reason,equity,data_mode\\n"
         with self.log_path.open("a", encoding="utf-8") as fh:
             if not file_exists:
                 fh.write(header)
@@ -475,22 +527,29 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             writer = csv.DictWriter(fh, fieldnames=columns)
             writer.writeheader()
             for row in rows:
-                strategy_value = row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID
-                writer.writerow({
-                    "timestamp": row.get("timestamp", ""),
-                    "event": row.get("event", ""),
-                    "session_id": row.get("session_id", ""),
-                    "strategy_id": strategy_value,
-                    "ticket": row.get("ticket", ""),
-                    "symbol": row.get("symbol", ""),
-                    "direction": row.get("direction", ""),
-                    "volume": row.get("volume", ""),
-                    "price": row.get("price", ""),
-                    "reason": row.get("reason", ""),
-                    "signal_reason": row.get("signal_reason", ""),
-                    "equity": row.get("equity", ""),
-                    "data_mode": row.get("data_mode", "live"),
-                })
+                strategy_value = (
+                    row.get("strategy_id")
+                    or row.get("strategy_tag")
+                    or DEFAULT_STRATEGY_ID
+                )
+                writer.writerow(
+                    {
+                        "timestamp": row.get("timestamp", ""),
+                        "event": row.get("event", ""),
+                        "session_id": row.get("session_id", ""),
+                        "strategy_id": strategy_value,
+                        "ticket": row.get("ticket", ""),
+                        "symbol": row.get("symbol", ""),
+                        "direction": row.get("direction", ""),
+                        "volume": row.get("volume", ""),
+                        "price": row.get("price", ""),
+                        "reason": row.get("reason", ""),
+                        "signal_reason": row.get("signal_reason", ""),
+                        "equity": row.get("equity", ""),
+                        "data_mode": row.get("data_mode", "live"),
+                    }
+                )
+
     def save_summary(self) -> None:
         self.summary_path.parent.mkdir(parents=True, exist_ok=True)
         self.summary_path.write_text(json.dumps(self.summary(), indent=2))
@@ -498,7 +557,17 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
     def summary(self) -> dict:
         strategy_stats = self._compute_strategy_stats()
         for strategy_id in sorted(self.active_strategy_ids):
-            strategy_stats.setdefault(strategy_id, {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0, "win_rate": 0.0, "avg_pnl_per_trade": 0.0})
+            strategy_stats.setdefault(
+                strategy_id,
+                {
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "pnl": 0.0,
+                    "win_rate": 0.0,
+                    "avg_pnl_per_trade": 0.0,
+                },
+            )
         wins = sum(1 for trade in self.trade_records if trade["pnl"] > 0)
         total = len(self.trade_records)
         daily_loss = max(0.0, -self.daily_realized)
@@ -529,8 +598,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "filtered_daily_loss": self.filter_counters.get("daily_loss", 0),
             "filtered_invalid_stops": self.filter_counters.get("invalid_stops", 0),
             "signal_reason_counts": signal_counts,
-            "session_pnl": (self.ending_equity or self.current_equity) - (self.starting_equity or self.initial_equity),
-            "session_balance_pnl": (self.ending_balance or self.starting_balance) - self.starting_balance,
+            "session_pnl": (self.ending_equity or self.current_equity)
+            - (self.starting_equity or self.initial_equity),
+            "session_balance_pnl": (self.ending_balance or self.starting_balance)
+            - self.starting_balance,
             "per_strategy": strategy_stats,
             "active_strategies": sorted(self.active_strategy_ids),
         }
@@ -554,4 +625,3 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             entry["win_rate"] = (wins / trades) if trades else 0.0
             entry["avg_pnl_per_trade"] = (entry["pnl"] / trades) if trades else 0.0
         return stats
-

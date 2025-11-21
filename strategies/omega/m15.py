@@ -8,11 +8,12 @@ and feed it pre-computed features.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import pandas as pd
 
-from core.strategy import TradeDecision, generate_signal
+from core.strategy import generate_signal
 from core.strategy_base import Strategy
 
 
@@ -21,7 +22,7 @@ class OmegaM15Strategy(Strategy):
 
     name = "omega_m15"
 
-    def required_features(self) -> Dict[str, list[str]]:
+    def required_features(self) -> dict[str, list[str]]:
         # The existing generate_signal() helper needs the close price,
         # two SMAs, and ATR.  We expose both the current and previous
         # bar requirements explicitly.
@@ -30,7 +31,9 @@ class OmegaM15Strategy(Strategy):
             "M15_previous": ["close", "SMA_fast", "SMA_slow", "ATR_14"],
         }
 
-    def on_bar(self, timestamp: Any, features_by_tf: Mapping[str, Any]) -> Dict[str, Any]:
+    def on_bar(
+        self, timestamp: Any, features_by_tf: Mapping[str, Any]
+    ) -> dict[str, Any]:
         entry = features_by_tf.get("M15_current")
         prev = features_by_tf.get("M15_previous")
         current_row = self._to_series(entry)
@@ -62,4 +65,3 @@ class OmegaM15Strategy(Strategy):
         if isinstance(payload, Mapping):
             return pd.Series(payload)
         return None
-

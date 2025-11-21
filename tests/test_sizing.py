@@ -10,7 +10,9 @@ from core.sizing import compute_position_size
 
 def test_higher_equity_scales_size_within_caps():
     base = compute_position_size(10_000, RiskMode.CONSERVATIVE, stop_distance_pips=20)
-    double_equity = compute_position_size(20_000, RiskMode.CONSERVATIVE, stop_distance_pips=20)
+    double_equity = compute_position_size(
+        20_000, RiskMode.CONSERVATIVE, stop_distance_pips=20
+    )
     assert double_equity > base
 
 

@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 
 from core.risk import RiskMode
 
-
 INITIAL_EQUITY = 100_000.0
 PIP_VALUE_PER_STANDARD_LOT = 10.0  # EUR/USD pip value at 1 standard lot
 MIN_LOT_SIZE = 0.01
@@ -113,6 +112,8 @@ SYMBOLS = [
         h4_path="data/USDJPY_H4.csv",
     ),
 ]
+
+
 @dataclass(frozen=True)
 class FirmProfile:
     name: str
@@ -238,7 +239,9 @@ DEFAULT_EVAL_PROFILE_PER_FIRM = {
 }
 
 
-def resolve_trading_phase_profile(trading_firm: str | None, account_phase: str | None) -> TradingProfile | None:
+def resolve_trading_phase_profile(
+    trading_firm: str | None, account_phase: str | None
+) -> TradingProfile | None:
     if not account_phase:
         return None
     firm_key = (trading_firm or DEFAULT_TRADING_FIRM).lower()

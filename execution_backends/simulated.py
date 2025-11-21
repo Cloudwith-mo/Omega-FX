@@ -6,10 +6,8 @@ import csv
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 from core.constants import DEFAULT_STRATEGY_ID
-
 from core.execution_base import ExecutionBackend, ExecutionPosition, OrderSpec
 from core.position_sizing import get_symbol_meta
 
@@ -29,16 +27,20 @@ class SimulatedExecutionBackend(ExecutionBackend):
         self.initial_equity = initial_equity
         self.current_equity = initial_equity
         self.log_path = Path(log_path)
-        self.positions: Dict[str, ExecutionPosition] = {}
-        self.trade_records: List[dict] = []
-        self.equity_history: List[Tuple[datetime, float]] = []
+        self.positions: dict[str, ExecutionPosition] = {}
+        self.trade_records: list[dict] = []
+        self.equity_history: list[tuple[datetime, float]] = []
         self._connected = False
         self.max_positions = max_positions
         self.per_trade_risk_fraction = per_trade_risk_fraction
         self.daily_loss_fraction = daily_loss_fraction
         self.daily_start_equity = initial_equity
         self.daily_realized = 0.0
-        self.filter_counters: dict[str, int] = {"max_positions": 0, "daily_loss": 0, "invalid_stops": 0}
+        self.filter_counters: dict[str, int] = {
+            "max_positions": 0,
+            "daily_loss": 0,
+            "invalid_stops": 0,
+        }
         self.last_limit_reason: str | None = None
 
     def connect(self) -> None:
@@ -67,7 +69,7 @@ class SimulatedExecutionBackend(ExecutionBackend):
     def disconnect(self) -> None:
         self._connected = False
 
-    def sync_positions(self) -> List[ExecutionPosition]:
+    def sync_positions(self) -> list[ExecutionPosition]:
         return list(self.positions.values())
 
     def submit_order(self, order: OrderSpec) -> str | None:
@@ -80,7 +82,9 @@ class SimulatedExecutionBackend(ExecutionBackend):
         timestamp = order.timestamp or datetime.utcnow()
         entry_price = float(order.entry_price)
         stop_loss = float(order.stop_loss)
-        risk_amount = self._risk_amount(order.symbol, entry_price, stop_loss, order.volume)
+        risk_amount = self._risk_amount(
+            order.symbol, entry_price, stop_loss, order.volume
+        )
         self.last_limit_reason = None
         if self.per_trade_risk_fraction > 0:
             max_risk = self.per_trade_risk_fraction * self.daily_start_equity
@@ -88,7 +92,9 @@ class SimulatedExecutionBackend(ExecutionBackend):
                 raise RuntimeError("Per-trade risk limit exceeded.")
         limit_reason = self._limit_reason(risk_amount)
         if limit_reason:
-            self._record_limit(order, entry_price, stop_loss, risk_amount, timestamp, limit_reason)
+            self._record_limit(
+                order, entry_price, stop_loss, risk_amount, timestamp, limit_reason
+            )
             return None
         ticket = f"SIM-{uuid.uuid4().hex[:10]}"
         position = ExecutionPosition(
@@ -106,7 +112,9 @@ class SimulatedExecutionBackend(ExecutionBackend):
             strategy_id=order.strategy_id or DEFAULT_STRATEGY_ID,
         )
         self.positions[ticket] = position
-        self._write_row(timestamp, "OPEN", position, price=position.entry_price, reason=order.tag)
+        self._write_row(
+            timestamp, "OPEN", position, price=position.entry_price, reason=order.tag
+        )
         return ticket
 
     def close_position(
@@ -196,7 +204,9 @@ class SimulatedExecutionBackend(ExecutionBackend):
         limit_reason: str,
     ) -> None:
         self.last_limit_reason = limit_reason
-        self.filter_counters[limit_reason] = self.filter_counters.get(limit_reason, 0) + 1
+        self.filter_counters[limit_reason] = (
+            self.filter_counters.get(limit_reason, 0) + 1
+        )
         pseudo_position = ExecutionPosition(
             ticket=f"FILTER-{limit_reason}-{uuid.uuid4().hex[:8]}",
             symbol=order.symbol.upper(),
@@ -211,9 +221,13 @@ class SimulatedExecutionBackend(ExecutionBackend):
             signal_reason=str(order.metadata.get("signal_reason") or order.tag),
             strategy_id=order.strategy_id or DEFAULT_STRATEGY_ID,
         )
-        self._write_row(timestamp, "FILTER", pseudo_position, price=entry_price, reason=limit_reason)
+        self._write_row(
+            timestamp, "FILTER", pseudo_position, price=entry_price, reason=limit_reason
+        )
 
-    def _risk_amount(self, symbol: str, entry: float, stop: float, volume: float) -> float:
+    def _risk_amount(
+        self, symbol: str, entry: float, stop: float, volume: float
+    ) -> float:
         meta = get_symbol_meta(symbol)
         pip_distance = abs(entry - stop) / meta.pip_size
         return pip_distance * meta.pip_value_per_standard_lot * volume
@@ -242,7 +256,9 @@ class SimulatedExecutionBackend(ExecutionBackend):
             day = timestamp.date()
             if day != current_day:
                 if daily_start > 0:
-                    worst = max(worst, max(0.0, (daily_start - equity_prev) / daily_start))
+                    worst = max(
+                        worst, max(0.0, (daily_start - equity_prev) / daily_start)
+                    )
                 daily_start = equity_prev
                 current_day = day
             equity_prev = equity

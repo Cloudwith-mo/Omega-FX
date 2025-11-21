@@ -58,7 +58,16 @@ def _metric_variant(value: float) -> str:
 
 
 def _strategy_breakdown_df(data: Any) -> pd.DataFrame:
-    columns = ["strategy_id", "family", "trades", "wins", "losses", "win_rate", "pnl", "avg_pnl"]
+    columns = [
+        "strategy_id",
+        "family",
+        "trades",
+        "wins",
+        "losses",
+        "win_rate",
+        "pnl",
+        "avg_pnl",
+    ]
     if not data:
         return pd.DataFrame(columns=columns)
     rows: list[dict[str, Any]] = []
@@ -79,14 +88,18 @@ def _strategy_breakdown_df(data: Any) -> pd.DataFrame:
                 "losses": int(entry.get("losses", 0) or 0),
                 "win_rate": win_rate,
                 "pnl": float(entry.get("pnl", 0.0) or 0.0),
-                "avg_pnl": float(entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0),
+                "avg_pnl": float(
+                    entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0
+                ),
             }
         )
     return pd.DataFrame(rows, columns=columns)
 
 
 def _apply_theme() -> None:
-    st.set_page_config(page_title="OmegaFX Cockpit", layout="wide", initial_sidebar_state="collapsed")
+    st.set_page_config(
+        page_title="OmegaFX Cockpit", layout="wide", initial_sidebar_state="collapsed"
+    )
     st.markdown(
         """
         <style>
@@ -107,7 +120,14 @@ def _apply_theme() -> None:
     )
 
 
-def _render_card(column, label: str, value: str, *, subtitle: str | None = None, variant: str = "neutral") -> None:
+def _render_card(
+    column,
+    label: str,
+    value: str,
+    *,
+    subtitle: str | None = None,
+    variant: str = "neutral",
+) -> None:
     subtitle_html = f"<div class='metric-sub'>{subtitle}</div>" if subtitle else ""
     column.markdown(
         f"<div class='metric-card {variant}'><div class='metric-label'>{label}</div><div class='metric-value'>{value}</div>{subtitle_html}</div>",
@@ -121,18 +141,25 @@ def _render_status_strip(status: dict[str, Any]) -> None:
     trades = status.get("last_24h_trades", 0)
     win_rate = status.get("last_24h_win_rate", 0.0) * 100
     filters = status.get("filter_counts", {})
-    filter_line = "Filters (24h): max_pos {mp} / daily_loss {dl} / invalid {inv}".format(
-        mp=filters.get("filtered_max_positions", 0),
-        dl=filters.get("filtered_daily_loss", 0),
-        inv=filters.get("filtered_invalid_stops", 0),
+    filter_line = (
+        "Filters (24h): max_pos {mp} / daily_loss {dl} / invalid {inv}".format(
+            mp=filters.get("filtered_max_positions", 0),
+            dl=filters.get("filtered_daily_loss", 0),
+            inv=filters.get("filtered_invalid_stops", 0),
+        )
     )
     strip = st.container()
     with strip:
         cols = st.columns([1, 1, 1, 1.5])
-        cols[0].metric("24h PnL", f"{pnl:+,.2f}", f"{pnl_pct:+.2f}%", delta_color="normal")
+        cols[0].metric(
+            "24h PnL", f"{pnl:+,.2f}", f"{pnl_pct:+.2f}%", delta_color="normal"
+        )
         cols[1].metric("24h Trades", trades)
         cols[2].metric("24h Win %", f"{win_rate:.1f}%")
-        cols[3].markdown(f"<div class='status-strip'><span class='status-pill'>{filter_line}</span></div>", unsafe_allow_html=True)
+        cols[3].markdown(
+            f"<div class='status-strip'><span class='status-pill'>{filter_line}</span></div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_details_section(
@@ -145,14 +172,19 @@ def _render_details_section(
 ) -> None:
     with st.expander("Details", expanded=False):
         st.markdown("### Strategy breakdown (latest session)")
-        latest_df = _strategy_breakdown_df(status.get("strategy_breakdown_latest") or status.get("strategy_breakdown"))
+        latest_df = _strategy_breakdown_df(
+            status.get("strategy_breakdown_latest") or status.get("strategy_breakdown")
+        )
         if latest_df.empty:
             st.info("No strategy data for the latest session.")
         else:
             st.dataframe(latest_df)
 
         st.markdown("### Strategy breakdown (report window)")
-        report_df = _strategy_breakdown_df(report_stats.get("strategy_breakdown_report") or report_stats.get("strategy_breakdown"))
+        report_df = _strategy_breakdown_df(
+            report_stats.get("strategy_breakdown_report")
+            or report_stats.get("strategy_breakdown")
+        )
         if report_df.empty:
             st.info("No strategy data for this report window.")
         else:
@@ -163,7 +195,9 @@ def _render_details_section(
         st.dataframe(pd.DataFrame.from_dict(filters, orient="index", columns=["count"]))
 
         st.markdown("### Last N trades")
-        trade_count = st.slider("Trades to display", min_value=5, max_value=50, value=10, step=5)
+        trade_count = st.slider(
+            "Trades to display", min_value=5, max_value=50, value=10, step=5
+        )
         trades = load_trades(
             DEFAULT_LOG_PATH,
             hours=168.0,
@@ -179,13 +213,15 @@ def _render_details_section(
         st.markdown("### Sim vs Live")
         live_win = report_stats.get("win_rate", 0.0)
         live_trades = report_stats.get("closed_trades", report_stats.get("trades", 0))
-        live_avg_pnl = report_stats.get("pnl", 0.0) / live_trades if live_trades else 0.0
+        live_avg_pnl = (
+            report_stats.get("pnl", 0.0) / live_trades if live_trades else 0.0
+        )
         comparison = pd.DataFrame(
             [
                 {
                     "Metric": "Win rate",
-                    "Backtest": f"{(backtest_summary.get('win_rate', 0.0) or 0)*100:.1f}%",
-                    "Live": f"{live_win*100:.1f}%",
+                    "Backtest": f"{(backtest_summary.get('win_rate', 0.0) or 0) * 100:.1f}%",
+                    "Live": f"{live_win * 100:.1f}%",
                 },
                 {
                     "Metric": "Avg PnL/trade",

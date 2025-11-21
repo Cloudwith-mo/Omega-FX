@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,14 +33,21 @@ def load_risk_profile(env: str, tier: str, *, path: Path | None = None) -> RiskP
         raise KeyError(f"Unknown risk profile environment '{env}'")
 
     limits: dict[str, float | int] = {}
-    for limit_key in ("max_per_trade_risk_fraction", "max_daily_loss_fraction", "max_positions"):
+    for limit_key in (
+        "max_per_trade_risk_fraction",
+        "max_daily_loss_fraction",
+        "max_positions",
+    ):
         value = env_profiles.get(limit_key)
         if isinstance(value, (int, float)):
             limits[limit_key] = value
 
     tier_cfg: dict[str, Any] | None = None
     for tier_name, tier_data in env_profiles.items():
-        if isinstance(tier_data, dict) and "per_trade_risk_fraction" in tier_data:
+        if (
+            isinstance(tier_data, dict)
+            and "per_trade_risk_fraction" in tier_data
+        ):
             if str(tier_name).lower() == tier_key:
                 tier_cfg = tier_data or {}
                 break
@@ -52,7 +59,9 @@ def load_risk_profile(env: str, tier: str, *, path: Path | None = None) -> RiskP
     max_positions = int(tier_cfg["max_positions"])
 
     if "max_per_trade_risk_fraction" in limits:
-        per_trade = min(per_trade, float(limits["max_per_trade_risk_fraction"]))
+        per_trade = min(
+            per_trade, float(limits["max_per_trade_risk_fraction"])
+        )
     if "max_daily_loss_fraction" in limits:
         daily_loss = min(daily_loss, float(limits["max_daily_loss_fraction"]))
     if "max_positions" in limits:

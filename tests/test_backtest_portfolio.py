@@ -37,7 +37,9 @@ def test_portfolio_enforces_single_position(monkeypatch) -> None:
         ("GBPUSD", 1): "long",  # should be blocked
     }
 
-    def fake_generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDecision:
+    def fake_generate_signal(
+        current_row: pd.Series, previous_row: pd.Series
+    ) -> TradeDecision:
         symbol = current_row.get("symbol")
         idx = int(current_row.name)
         action = plan.get((symbol, idx), "flat")

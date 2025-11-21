@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -9,11 +9,18 @@ import yaml
 DEFAULT_NOTIFICATIONS_PATH = Path("config/notifications.yaml")
 
 
-def send_telegram_message(text: str, config_path: str | Path = DEFAULT_NOTIFICATIONS_PATH, *, timeout: int = 15) -> bool:
+def send_telegram_message(
+    text: str,
+    config_path: str | Path = DEFAULT_NOTIFICATIONS_PATH,
+    *,
+    timeout: int = 15,
+) -> bool:
     """Send a Telegram message if enabled in the config."""
     path = Path(config_path)
     if not path.exists():
-        print(f"[Notifications] Config file {path} not found; skipping Telegram send.")
+        print(
+            f"[Notifications] Config file {path} not found; skipping Telegram send."
+        )
         return False
     data: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
     telegram = data.get("telegram") or {}
@@ -35,7 +42,10 @@ def send_telegram_message(text: str, config_path: str | Path = DEFAULT_NOTIFICAT
         return False
 
     if response.status_code != 200:
-        print(f"[Notifications] Telegram API returned {response.status_code}: {response.text}")
+        print(
+            f"[Notifications] Telegram API returned {response.status_code}: "
+            f"{response.text}"
+        )
         return False
 
     try:

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -18,18 +17,26 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 from config.deploy_ftmo_eval import FTMO_EVAL_PRESET  # noqa: E402
 from core.backtest import run_backtest  # noqa: E402
 from core.constants import DEFAULT_STRATEGY_ID  # noqa: E402
+from core.execution_accounts import (  # noqa: E402
+    available_profile_names,
+    resolve_account_config,
+)
 from core.execution_base import OrderSpec  # noqa: E402
-from core.execution_accounts import available_profile_names, resolve_account_config  # noqa: E402
 from core.position_sizing import calculate_position_size  # noqa: E402
 from core.risk import RISK_PROFILES, RiskMode  # noqa: E402
 from execution_backends.mt5_demo import Mt5DemoExecutionBackend  # noqa: E402
 from strategies.omega_mr_m15 import OMEGA_MR_STRATEGY_ID, generate_mean_reversion_signal
-from strategies.omega_session_london import OMEGA_SESSION_LDN_STRATEGY_ID, make_london_session_strategy
+from strategies.omega_session_london import (
+    OMEGA_SESSION_LDN_STRATEGY_ID,
+    make_london_session_strategy,
+)
 
 
 def parse_args() -> argparse.Namespace:
     profile_choices = available_profile_names()
-    parser = argparse.ArgumentParser(description="Route Omega trades to an MT5 demo account.")
+    parser = argparse.ArgumentParser(
+        description="Route Omega trades to an MT5 demo account."
+    )
     parser.add_argument("--starting_equity", type=float, default=100_000.0)
     parser.add_argument(
         "--dry_run",
@@ -52,9 +59,15 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Multiplier applied on top of the firm profile risk fraction.",
     )
-    parser.add_argument("--summary_path", type=Path, default=Path("results/mt5_demo_exec_summary.json"))
-    parser.add_argument("--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv"))
-    parser.add_argument("--limit_trades", type=int, default=None, help="Optional cap on trade count.")
+    parser.add_argument(
+        "--summary_path", type=Path, default=Path("results/mt5_demo_exec_summary.json")
+    )
+    parser.add_argument(
+        "--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv")
+    )
+    parser.add_argument(
+        "--limit_trades", type=int, default=None, help="Optional cap on trade count."
+    )
     parser.add_argument("--login", type=int, default=None)
     parser.add_argument("--server", type=str, default=None)
     parser.add_argument("--password", type=str, default=None)
@@ -62,10 +75,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk_env", type=str, default=None)
     parser.add_argument("--risk_tier", type=str, default=None)
     parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID)
-    parser.add_argument("--enable-mean-reversion", action=argparse.BooleanOptionalAction, default=True, help="Toggle the Omega MR M15 strategy.")
-    parser.add_argument("--mr-risk-scale", type=float, default=0.5, help="Relative risk scale for MR strategy trades.")
-    parser.add_argument("--enable-session-momentum", action=argparse.BooleanOptionalAction, default=False, help="Toggle the London session strategy.")
-    parser.add_argument("--session-risk-scale", type=float, default=0.25, help="Relative risk scale for London session trades.")
+    parser.add_argument(
+        "--enable-mean-reversion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Toggle the Omega MR M15 strategy.",
+    )
+    parser.add_argument(
+        "--mr-risk-scale",
+        type=float,
+        default=0.5,
+        help="Relative risk scale for MR strategy trades.",
+    )
+    parser.add_argument(
+        "--enable-session-momentum",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Toggle the London session strategy.",
+    )
+    parser.add_argument(
+        "--session-risk-scale",
+        type=float,
+        default=0.25,
+        help="Relative risk scale for London session trades.",
+    )
     return parser.parse_args()
 
 
@@ -84,11 +117,15 @@ def run_exec_once(args: argparse.Namespace) -> dict:
     active_strategy_ids = [args.strategy_id or "OMEGA_M15_TF1"]
     if args.enable_mean_reversion:
         extra_strategies.append(generate_mean_reversion_signal)
-        strategy_settings[OMEGA_MR_STRATEGY_ID] = {"risk_scale_multiplier": max(args.mr_risk_scale, 0.0)}
+        strategy_settings[OMEGA_MR_STRATEGY_ID] = {
+            "risk_scale_multiplier": max(args.mr_risk_scale, 0.0)
+        }
         active_strategy_ids.append(OMEGA_MR_STRATEGY_ID)
     if args.enable_session_momentum:
         extra_strategies.append(make_london_session_strategy())
-        strategy_settings[OMEGA_SESSION_LDN_STRATEGY_ID] = {"risk_scale_multiplier": max(args.session_risk_scale, 0.0)}
+        strategy_settings[OMEGA_SESSION_LDN_STRATEGY_ID] = {
+            "risk_scale_multiplier": max(args.session_risk_scale, 0.0)
+        }
         active_strategy_ids.append(OMEGA_SESSION_LDN_STRATEGY_ID)
     backtest = run_backtest(
         df=None,
@@ -132,7 +169,9 @@ def run_exec_once(args: argparse.Namespace) -> dict:
     try:
         for timestamp, kind, trade_id, trade in events:
             if kind == "open":
-                ticket = _submit_from_trade(backend, trade, timestamp, args.risk_fraction)
+                ticket = _submit_from_trade(
+                    backend, trade, timestamp, args.risk_fraction
+                )
                 if ticket:
                     tickets[trade_id] = ticket
                 else:
@@ -155,15 +194,19 @@ def run_exec_once(args: argparse.Namespace) -> dict:
     summary = backend.summary()
     summary["active_strategies"] = sorted(dict.fromkeys(active_strategy_ids))
     if args.session_id:
-        summary['session_id'] = args.session_id
+        summary["session_id"] = args.session_id
     if args.risk_env:
-        summary['risk_env'] = args.risk_env
+        summary["risk_env"] = args.risk_env
     if extra_strategies:
-        summary['strategy_id'] = 'MULTI'
+        summary["strategy_id"] = "MULTI"
     else:
-        summary['strategy_id'] = args.strategy_id or summary.get('strategy_id')
-    summary["filtered_max_positions"] = max(summary.get("filtered_max_positions", 0), filtered_counts["max_positions"])
-    summary["filtered_daily_loss"] = max(summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"])
+        summary["strategy_id"] = args.strategy_id or summary.get("strategy_id")
+    summary["filtered_max_positions"] = max(
+        summary.get("filtered_max_positions", 0), filtered_counts["max_positions"]
+    )
+    summary["filtered_daily_loss"] = max(
+        summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"]
+    )
     summary["filtered_invalid_stops"] = max(
         summary.get("filtered_invalid_stops", 0), filtered_counts["invalid_stops"]
     )
@@ -185,7 +228,9 @@ def _submit_from_trade(
 ) -> str | None:
     risk_mode = RiskMode(trade["risk_mode_at_entry"])
     base_fraction = RISK_PROFILES[risk_mode].risk_per_trade_fraction
-    risk_fraction = base_fraction * float(trade.get("risk_scale", 1.0)) * risk_fraction_override
+    risk_fraction = (
+        base_fraction * float(trade.get("risk_scale", 1.0)) * risk_fraction_override
+    )
     if risk_fraction <= 0:
         return None
     try:
@@ -207,7 +252,11 @@ def _submit_from_trade(
         take_profit=float(trade["take_profit"]),
         timestamp=timestamp,
         tag=trade.get("pattern_tag", "OMEGA_FX"),
-        metadata={"signal_reason": trade.get("signal_reason") or trade.get("pattern_tag") or trade.get("reason")},
+        metadata={
+            "signal_reason": trade.get("signal_reason")
+            or trade.get("pattern_tag")
+            or trade.get("reason")
+        },
         strategy_id=trade.get("strategy_id") or DEFAULT_STRATEGY_ID,
     )
     return backend.submit_order(spec)
@@ -219,7 +268,9 @@ def _to_datetime(value) -> pd.Timestamp:
     return pd.to_datetime(value).to_pydatetime()
 
 
-def _update_filtered_counts(backend: Mt5DemoExecutionBackend, counters: dict[str, int]) -> None:
+def _update_filtered_counts(
+    backend: Mt5DemoExecutionBackend, counters: dict[str, int]
+) -> None:
     reason = getattr(backend, "last_limit_reason", None)
     if reason in counters:
         counters[reason] += 1
@@ -227,7 +278,3 @@ def _update_filtered_counts(backend: Mt5DemoExecutionBackend, counters: dict[str
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-

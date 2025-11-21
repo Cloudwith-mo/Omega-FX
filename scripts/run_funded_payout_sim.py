@@ -7,9 +7,9 @@ import argparse
 import json
 import math
 import statistics
+from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterable
 
 import pandas as pd
 
@@ -91,7 +91,11 @@ def load_portfolio_data() -> dict[str, dict[str, pd.DataFrame]]:
     data: dict[str, dict[str, pd.DataFrame]] = {}
     for cfg in SYMBOLS:
         frames: dict[str, pd.DataFrame] = {}
-        for label, path in (("H1", cfg.h1_path), ("M15", cfg.m15_path), ("H4", cfg.h4_path)):
+        for label, path in (
+            ("H1", cfg.h1_path),
+            ("M15", cfg.m15_path),
+            ("H4", cfg.h4_path),
+        ):
             if not path:
                 continue
             csv_path = Path(path)
@@ -104,7 +108,9 @@ def load_portfolio_data() -> dict[str, dict[str, pd.DataFrame]]:
             continue
         data[cfg.name] = frames
     if not data:
-        raise ValueError("No MT5 data found under data/*.csv. Run prepare_mt5_data.py first.")
+        raise ValueError(
+            "No MT5 data found under data/*.csv. Run prepare_mt5_data.py first."
+        )
     return data
 
 
@@ -156,7 +162,11 @@ def _summarize(records: list[dict], months: int) -> dict:
     totals = [row["total_payout"] for row in records]
     largest = [row["largest_payout"] for row in records]
     alive = sum(1 for row in records if not row["account_died"])
-    first_payouts = [row["first_payout_day"] for row in records if row["first_payout_day"] is not None]
+    first_payouts = [
+        row["first_payout_day"]
+        for row in records
+        if row["first_payout_day"] is not None
+    ]
 
     def pct(data: Iterable[float], q: float) -> float:
         if not data:
@@ -173,13 +183,23 @@ def _summarize(records: list[dict], months: int) -> dict:
         "p10_total_payout": pct(totals, 0.10),
         "p90_total_payout": pct(totals, 0.90),
         "prob_at_least_one_payout": sum(1 for t in totals if t > 0) / len(records),
-        "prob_total_payout_ge_10k": sum(1 for t in totals if t >= 10_000.0) / len(records),
-        "prob_total_payout_ge_20k": sum(1 for t in totals if t >= 20_000.0) / len(records),
-        "prob_total_payout_ge_50k": sum(1 for t in totals if t >= 50_000.0) / len(records),
-        "p_at_least_one_payout_ge_5k": sum(1 for l in largest if l >= 5_000.0) / len(records),
-        "mean_time_to_first_payout_days": statistics.fmean(first_payouts) if first_payouts else None,
-        "median_time_to_first_payout_days": statistics.median(first_payouts) if first_payouts else None,
-        "payout_rate_per_run": statistics.fmean(row["num_payouts"] for row in records) if records else 0.0,
+        "prob_total_payout_ge_10k": sum(1 for t in totals if t >= 10_000.0)
+        / len(records),
+        "prob_total_payout_ge_20k": sum(1 for t in totals if t >= 20_000.0)
+        / len(records),
+        "prob_total_payout_ge_50k": sum(1 for t in totals if t >= 50_000.0)
+        / len(records),
+        "p_at_least_one_payout_ge_5k": sum(1 for l in largest if l >= 5_000.0)
+        / len(records),
+        "mean_time_to_first_payout_days": statistics.fmean(first_payouts)
+        if first_payouts
+        else None,
+        "median_time_to_first_payout_days": statistics.median(first_payouts)
+        if first_payouts
+        else None,
+        "payout_rate_per_run": statistics.fmean(row["num_payouts"] for row in records)
+        if records
+        else 0.0,
         "max_daily_loss_observed": max(row["max_daily_loss"] for row in records),
         "max_trailing_dd_observed": max(row["max_trailing_dd"] for row in records),
     }
@@ -244,7 +264,8 @@ def main() -> int:
                 "largest_payout": payouts["largest_payout"],
                 "num_payouts": payouts["num_payouts"],
                 "first_payout_day": payouts["first_payout_day"],
-                "account_died": backtest.internal_stop_out_triggered or backtest.prop_fail_triggered,
+                "account_died": backtest.internal_stop_out_triggered
+                or backtest.prop_fail_triggered,
                 "max_daily_loss": backtest.max_daily_loss_fraction,
                 "max_trailing_dd": backtest.max_drawdown,
                 "payouts": payouts["payouts"],
@@ -252,13 +273,19 @@ def main() -> int:
         )
 
     if not runs:
-        raise RuntimeError("Unable to produce funded payout simulations. Check data horizon or step size.")
+        raise RuntimeError(
+            "Unable to produce funded payout simulations. Check data horizon or step size."
+        )
 
     summary = _summarize(runs, args.months)
     output_prefix = args.output_prefix
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
-    csv_path = output_prefix.with_name(f"{output_prefix.stem}_{firm_key}_{args.months}m_runs.csv")
-    json_path = output_prefix.with_name(f"{output_prefix.stem}_{firm_key}_{args.months}m_summary.json")
+    csv_path = output_prefix.with_name(
+        f"{output_prefix.stem}_{firm_key}_{args.months}m_runs.csv"
+    )
+    json_path = output_prefix.with_name(
+        f"{output_prefix.stem}_{firm_key}_{args.months}m_summary.json"
+    )
 
     pd.DataFrame(runs).to_csv(csv_path, index=False)
     with json_path.open("w", encoding="utf-8") as fh:

@@ -2,16 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-
-from types import SimpleNamespace
 
 from core.execution_accounts import load_account_profiles, resolve_account_config
 from core.execution_base import OrderSpec
 from core.position_sizing import calculate_position_size
-from execution_backends.simulated import SimulatedExecutionBackend
 from execution_backends.mt5_demo import Mt5DemoExecutionBackend
+from execution_backends.simulated import SimulatedExecutionBackend
 from scripts.run_exec_mt5_smoketest import perform_smoketest
 
 
@@ -199,7 +198,11 @@ def test_mt5_backend_invalid_stops_filtered(monkeypatch, tmp_path: Path) -> None
 def test_account_loader_merges(tmp_path: Path) -> None:
     example = tmp_path / "example.yaml"
     example.write_text(
-        "profiles:\n  DEMO:\n    server: EXAMPLE\n    description: test\n    default_symbol: EURUSD\n"
+        "profiles:\n"
+        "  DEMO:\n"
+        "    server: EXAMPLE\n"
+        "    description: test\n"
+        "    default_symbol: EURUSD\n"
     )
     config = tmp_path / "config.yaml"
     config.write_text("profiles:\n  demo:\n    login: 111\n    password: secret\n")
@@ -240,9 +243,13 @@ class _FailingBackend(_FakeBackend):
 def test_smoketest_dry_run(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.run_exec_mt5_smoketest.mt5",
-        SimpleNamespace(symbol_info_tick=lambda symbol: SimpleNamespace(bid=1.1, ask=1.1)),
+        SimpleNamespace(
+            symbol_info_tick=lambda symbol: SimpleNamespace(bid=1.1, ask=1.1)
+        ),
     )
-    account = SimpleNamespace(name="TEST", login=1, password="x", server="demo", default_symbol="EURUSD")
+    account = SimpleNamespace(
+        name="TEST", login=1, password="x", server="demo", default_symbol="EURUSD"
+    )
     args = SimpleNamespace(
         dry_run=True,
         max_positions=1,
@@ -261,9 +268,13 @@ def test_smoketest_dry_run(monkeypatch) -> None:
 def test_smoketest_handles_daily_loss(monkeypatch) -> None:
     monkeypatch.setattr(
         "scripts.run_exec_mt5_smoketest.mt5",
-        SimpleNamespace(symbol_info_tick=lambda symbol: SimpleNamespace(bid=1.1, ask=1.1)),
+        SimpleNamespace(
+            symbol_info_tick=lambda symbol: SimpleNamespace(bid=1.1, ask=1.1)
+        ),
     )
-    account = SimpleNamespace(name="TEST", login=1, password="x", server="demo", default_symbol="EURUSD")
+    account = SimpleNamespace(
+        name="TEST", login=1, password="x", server="demo", default_symbol="EURUSD"
+    )
     args = SimpleNamespace(
         dry_run=False,
         max_positions=1,

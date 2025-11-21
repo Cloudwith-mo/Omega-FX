@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import pandas as pd
 
@@ -64,7 +63,9 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
     def _record_asian_range(high: float, low: float) -> None:
         asian_high = state["asian_high"]
         asian_low = state["asian_low"]
-        state["asian_high"] = high if asian_high is None else max(asian_high, high)
+        state["asian_high"] = (
+            high if asian_high is None else max(asian_high, high)
+        )
         if asian_low is None:
             state["asian_low"] = low
         else:
@@ -85,11 +86,15 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
         state["buy_trigger"] = float(state["asian_high"]) + buffer_price
         state["sell_trigger"] = float(state["asian_low"]) - buffer_price
         state["box_height"] = height
-        state["box_mid"] = (float(state["asian_high"]) + float(state["asian_low"])) / 2
+        state["box_mid"] = (
+            float(state["asian_high"]) + float(state["asian_low"])
+        ) / 2
         state["box_ready"] = True
         state["box_invalid"] = False
 
-    def strategy(current_row: pd.Series, previous_row: Optional[pd.Series] = None) -> Optional[TradeDecision]:
+    def strategy(
+        current_row: pd.Series, previous_row: pd.Series | None = None
+    ) -> TradeDecision | None:
         symbol = str(current_row.get("symbol") or "").upper()
         if symbol != cfg.symbol:
             return None
@@ -111,7 +116,11 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
             state["box_invalid"] = False
             return None
 
-        if not state["box_ready"] and not state["box_invalid"] and hour >= cfg.asian_end_hour:
+        if (
+            not state["box_ready"]
+            and not state["box_invalid"]
+            and hour >= cfg.asian_end_hour
+        ):
             _finalize_box()
 
         if state["box_invalid"] or not state["box_ready"]:
@@ -125,8 +134,8 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
 
         buy_trigger = state["buy_trigger"]
         sell_trigger = state["sell_trigger"]
-        triggered_direction: Optional[str] = None
-        entry_price: Optional[float] = None
+        triggered_direction: str | None = None
+        entry_price: float | None = None
 
         if buy_trigger is not None and high >= buy_trigger:
             triggered_direction = "long"
@@ -141,7 +150,9 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
         state["triggered_side"] = triggered_direction
         box_mid = float(state["box_mid"])
         box_height = float(state["box_height"])
-        stop_distance_pips = abs(entry_price - box_mid) * PIP_FACTOR
+        stop_distance_pips = (
+            abs(entry_price - box_mid) * PIP_FACTOR
+        )
         if stop_distance_pips <= 0:
             stop_distance_pips = max(box_height * PIP_FACTOR * 0.5, 1.0)
         take_profit_pips = max(box_height * PIP_FACTOR, 1.0)
@@ -158,4 +169,8 @@ def make_london_session_strategy(config: LondonSessionConfig | None = None):
     return strategy
 
 
-__all__ = ["OMEGA_SESSION_LDN_STRATEGY_ID", "LondonSessionConfig", "make_london_session_strategy"]
+__all__ = [
+    "OMEGA_SESSION_LDN_STRATEGY_ID",
+    "LondonSessionConfig",
+    "make_london_session_strategy",
+]

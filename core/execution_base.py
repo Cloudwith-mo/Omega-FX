@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from core.constants import DEFAULT_STRATEGY_ID
 
@@ -18,12 +18,12 @@ class OrderSpec:
     direction: str  # "long" or "short"
     volume: float  # MT5 lots
     entry_type: str = "market"
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    timestamp: Optional[datetime] = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    timestamp: datetime | None = None
     tag: str = "OMEGA_FX"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     strategy_id: str = DEFAULT_STRATEGY_ID
 
 
@@ -36,8 +36,8 @@ class ExecutionPosition:
     direction: str
     volume: float
     entry_price: float
-    stop_loss: Optional[float]
-    take_profit: Optional[float]
+    stop_loss: float | None
+    take_profit: float | None
     opened_at: datetime
     tag: str
     max_loss_amount: float = 0.0
@@ -59,7 +59,7 @@ class ExecutionBackend(ABC):
         """Close any resources associated with the backend."""
 
     @abstractmethod
-    def sync_positions(self) -> List[ExecutionPosition]:
+    def sync_positions(self) -> list[ExecutionPosition]:
         """Return the list of open positions known to the backend."""
 
     @abstractmethod
@@ -72,7 +72,7 @@ class ExecutionBackend(ABC):
         ticket: str,
         reason: str,
         *,
-        close_price: Optional[float] = None,
-        timestamp: Optional[datetime] = None,
+        close_price: float | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """Close an existing position."""

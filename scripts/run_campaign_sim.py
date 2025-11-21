@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +11,9 @@ import pandas as pd
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Estimate campaign pass odds from challenge runs.")
+    parser = argparse.ArgumentParser(
+        description="Estimate campaign pass odds from challenge runs."
+    )
     parser.add_argument(
         "--runs_csv",
         type=Path,
@@ -116,7 +117,9 @@ def simulate_campaigns(
                 "num_evals": n,
                 "fee_per_eval": fee,
                 "campaign_fee": campaign_fee,
-                "pass_prob_at_least_one": float(np.mean(at_least_one)),
+                "pass_prob_at_least_one": (
+                    float(np.mean(at_least_one))
+                ),
                 "mean_passes": float(np.mean(pass_counts)),
                 "mean_profit": float(np.mean(total_pnl)),
                 "median_profit": float(np.median(total_pnl)),
@@ -125,7 +128,9 @@ def simulate_campaigns(
                 "mean_trades_per_campaign": None,
             }
             if np.any(at_least_one):
-                row["mean_time_to_first_pass"] = float(np.nanmean(min_days[at_least_one]))
+                row["mean_time_to_first_pass"] = float(
+                    np.nanmean(min_days[at_least_one])
+                )
             else:
                 row["mean_time_to_first_pass"] = None
             rows.append(row)

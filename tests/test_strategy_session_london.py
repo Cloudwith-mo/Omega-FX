@@ -10,12 +10,14 @@ from strategies.omega_session_london import (
 
 
 def _row(ts: str, high: float, low: float, symbol: str = "GBPUSD") -> pd.Series:
-    return pd.Series({
-        "timestamp": pd.Timestamp(ts),
-        "symbol": symbol,
-        "high": high,
-        "low": low,
-    })
+    return pd.Series(
+        {
+            "timestamp": pd.Timestamp(ts),
+            "symbol": symbol,
+            "high": high,
+            "low": low,
+        }
+    )
 
 
 def test_london_session_long_trigger() -> None:
@@ -46,4 +48,6 @@ def test_london_session_short_trigger() -> None:
 def test_strategy_only_targets_gbpusd() -> None:
     strategy = make_london_session_strategy()
     strategy(_row("2024-01-03T00:30:00Z", 1.2600, 1.2580))
-    assert strategy(_row("2024-01-03T07:00:00Z", 1.2605, 1.2595, symbol="EURUSD")) is None
+    assert (
+        strategy(_row("2024-01-03T07:00:00Z", 1.2605, 1.2595, symbol="EURUSD")) is None
+    )

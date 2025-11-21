@@ -1,12 +1,10 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Local FastAPI server to expose OmegaFX status."""
 
 from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
-from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -23,8 +21,8 @@ from core.monitoring_helpers import (  # noqa: E402
     build_report_payload,
     build_status_payload,
 )
-from scripts.run_daily_exec_report import read_latest_session_id  # noqa: E402
 from scripts.query_last_trades import load_trades  # noqa: E402
+from scripts.run_daily_exec_report import read_latest_session_id  # noqa: E402
 
 LOG_PATH = DEFAULT_LOG_PATH
 SUMMARY_PATH = DEFAULT_SUMMARY_PATH

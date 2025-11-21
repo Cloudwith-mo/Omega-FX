@@ -32,9 +32,15 @@ def _detect_columns(df: pd.DataFrame) -> tuple[str | None, str | None, str | Non
     return time_col, date_col, cols.get("time", time_col)
 
 
-def _combine_timestamp(df: pd.DataFrame, time_col: str | None, date_col: str | None) -> pd.Series:
+def _combine_timestamp(
+    df: pd.DataFrame, time_col: str | None, date_col: str | None
+) -> pd.Series:
     if time_col and date_col:
-        combined = df[date_col].astype(str).str.strip() + " " + df[time_col].astype(str).str.strip()
+        combined = (
+            df[date_col].astype(str).str.strip()
+            + " "
+            + df[time_col].astype(str).str.strip()
+        )
     elif time_col:
         combined = df[time_col].astype(str).str.strip()
     else:
@@ -100,12 +106,16 @@ def _normalize_mt5_csv(input_path: Path, symbol: str) -> pd.DataFrame:
     df = df.dropna(subset=numeric_cols)
 
     df = df.sort_values("timestamp").drop_duplicates("timestamp")
-    df = df[["timestamp", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+    df = df[["timestamp", "open", "high", "low", "close", "volume"]].reset_index(
+        drop=True
+    )
 
     return df
 
 
-def _validate_timeframe(df: pd.DataFrame, timeframe: str) -> tuple[pd.Timestamp, pd.Timestamp, str]:
+def _validate_timeframe(
+    df: pd.DataFrame, timeframe: str
+) -> tuple[pd.Timestamp, pd.Timestamp, str]:
     start = pd.Timestamp(df["timestamp"].iloc[0])
     end = pd.Timestamp(df["timestamp"].iloc[-1])
     timeframe = "unknown"
@@ -120,14 +130,18 @@ def _validate_timeframe(df: pd.DataFrame, timeframe: str) -> tuple[pd.Timestamp,
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Normalize MT5 H1 CSV exports.")
     parser.add_argument("--symbol", required=True, help="Symbol name, e.g. EURUSD")
-    parser.add_argument("--input", type=Path, required=True, help="Path to the raw MT5 CSV export.")
+    parser.add_argument(
+        "--input", type=Path, required=True, help="Path to the raw MT5 CSV export."
+    )
     parser.add_argument(
         "--output",
         type=Path,
         required=True,
         help="Destination for the normalized CSV (e.g. data/EURUSD_H1.csv).",
     )
-    parser.add_argument("--force", action="store_true", help="Overwrite the destination if it exists.")
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite the destination if it exists."
+    )
     parser.add_argument(
         "--timeframe",
         choices=["H1", "M15", "H4"],
@@ -143,7 +157,9 @@ def main() -> int:
         print(f"[!] Input file not found: {args.input}")
         return 1
     if args.output.exists() and not args.force:
-        print(f"[!] Output file already exists: {args.output}. Use --force to overwrite.")
+        print(
+            f"[!] Output file already exists: {args.output}. Use --force to overwrite."
+        )
         return 1
 
     timeframe = _infer_timeframe(args.input, args.timeframe)

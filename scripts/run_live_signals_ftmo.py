@@ -37,21 +37,36 @@ from core.backtest import (  # noqa: E402
 )
 from core.filters import TradeTags, should_allow_trade  # noqa: E402
 from core.risk import RISK_PROFILES, RiskState  # noqa: E402
-from core.risk_aggression import set_custom_tier_scales, should_allow_risk_aggression  # noqa: E402
+from core.risk_aggression import (  # noqa: E402
+    set_custom_tier_scales,
+    should_allow_risk_aggression,
+)
 from core.sizing import compute_position_size  # noqa: E402
 from core.strategy import generate_signal  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Produce FTMO live signal suggestions every M15 bar.")
+    parser = argparse.ArgumentParser(
+        description="Produce FTMO live signal suggestions every M15 bar."
+    )
     parser.add_argument(
         "--symbols",
         nargs="+",
         default=["EURUSD", "GBPUSD", "USDJPY"],
         help="Symbols to poll from MT5.",
     )
-    parser.add_argument("--m15-bars", type=int, default=500, help="Number of M15 bars to fetch per symbol.")
-    parser.add_argument("--h1-bars", type=int, default=500, help="Number of H1 bars to fetch per symbol.")
+    parser.add_argument(
+        "--m15-bars",
+        type=int,
+        default=500,
+        help="Number of M15 bars to fetch per symbol.",
+    )
+    parser.add_argument(
+        "--h1-bars",
+        type=int,
+        default=500,
+        help="Number of H1 bars to fetch per symbol.",
+    )
     parser.add_argument(
         "--account-equity",
         type=float,
@@ -81,7 +96,9 @@ def parse_args() -> argparse.Namespace:
 
 def init_mt5() -> None:
     if mt5 is None:
-        raise RuntimeError("MetaTrader5 package not installed. pip install MetaTrader5 before running.")
+        raise RuntimeError(
+            "MetaTrader5 package not installed. pip install MetaTrader5 before running."
+        )
     if not mt5.initialize():
         raise RuntimeError(f"Failed to initialize MT5 terminal: {mt5.last_error()}")
 
@@ -102,7 +119,9 @@ def fetch_rates(symbol: str, timeframe, bars: int) -> pd.DataFrame:
     return df[["timestamp", "open", "high", "low", "close", "volume"]]
 
 
-def build_symbol_data(symbols: list[str], m15_bars: int, h1_bars: int) -> dict[str, dict[str, pd.DataFrame]]:
+def build_symbol_data(
+    symbols: list[str], m15_bars: int, h1_bars: int
+) -> dict[str, dict[str, pd.DataFrame]]:
     payload: dict[str, dict[str, pd.DataFrame]] = {}
     for symbol in symbols:
         m15_df = fetch_rates(symbol, mt5.TIMEFRAME_M15, m15_bars)
@@ -143,7 +162,11 @@ def evaluate_signals(
             if not frames:
                 continue
             entry_df = frames.entry_frames.get(event.timeframe)
-            if entry_df is None or event.row_index >= len(entry_df) or event.row_index < 1:
+            if (
+                entry_df is None
+                or event.row_index >= len(entry_df)
+                or event.row_index < 1
+            ):
                 continue
             row = frames.get_entry_row(event.timeframe, event.row_index)
             prev_row = frames.get_entry_row(event.timeframe, event.row_index - 1)
@@ -158,13 +181,23 @@ def evaluate_signals(
             session_tag = _session_tag(event.timestamp)
             atr_value = float(context_row.get("ATR_14", 0.0))
             entry_atr_value = float(row.get("ATR_14", 0.0))
-            vol_regime = _volatility_regime(atr_value, frames.context_h1_atr_low, frames.context_h1_atr_high)
+            vol_regime = _volatility_regime(
+                atr_value, frames.context_h1_atr_low, frames.context_h1_atr_high
+            )
             trend_regime = _trend_regime(signal.action, context_row)
 
             filter_result = should_allow_trade(
-                TradeTags(session_tag=session_tag, trend_regime=trend_regime, volatility_regime=vol_regime)
+                TradeTags(
+                    session_tag=session_tag,
+                    trend_regime=trend_regime,
+                    volatility_regime=vol_regime,
+                )
             )
-            if not (filter_result.session_passed and filter_result.trend_passed and filter_result.volatility_passed):
+            if not (
+                filter_result.session_passed
+                and filter_result.trend_passed
+                and filter_result.volatility_passed
+            ):
                 continue
 
             lot_size = compute_position_size(
@@ -174,9 +207,17 @@ def evaluate_signals(
             )
             pip_to_price = signal.stop_distance_pips / 10_000
             entry_price = float(row["close"])
-            stop_loss = entry_price - pip_to_price if signal.action == "long" else entry_price + pip_to_price
+            stop_loss = (
+                entry_price - pip_to_price
+                if signal.action == "long"
+                else entry_price + pip_to_price
+            )
             tp_to_price = signal.take_profit_distance_pips / 10_000
-            take_profit = entry_price + tp_to_price if signal.action == "long" else entry_price - tp_to_price
+            take_profit = (
+                entry_price + tp_to_price
+                if signal.action == "long"
+                else entry_price - tp_to_price
+            )
 
             breakout_high = float(row.get("HIGH_BREAKOUT", float("nan")))
             breakout_low = float(row.get("LOW_BREAKOUT", float("nan")))
@@ -187,7 +228,9 @@ def evaluate_signals(
                 entry_price=entry_price,
                 sma_fast=sma_fast,
                 sma_trend=sma_trend,
-                breakout_level=breakout_high if signal.action == "long" else breakout_low,
+                breakout_level=breakout_high
+                if signal.action == "long"
+                else breakout_low,
                 atr_value=atr_value,
                 config=DEFAULT_BREAKOUT_CONFIG,
             ):
@@ -210,7 +253,9 @@ def evaluate_signals(
 
             risk_amount = signal.stop_distance_pips * 10 * lot_size
             projected_loss = max(0.0, -todays_realized_pnl) + risk_amount
-            internal_limit = risk_profile.daily_loss_limit_fraction * risk_state.start_of_day_equity
+            internal_limit = (
+                risk_profile.daily_loss_limit_fraction * risk_state.start_of_day_equity
+            )
             if projected_loss > internal_limit:
                 continue
 
@@ -222,7 +267,9 @@ def evaluate_signals(
                     "entry_price": entry_price,
                     "stop_loss": stop_loss,
                     "take_profit": take_profit,
-                    "risk_fraction": risk_amount / risk_state.current_equity if risk_state.current_equity else 0.0,
+                    "risk_fraction": risk_amount / risk_state.current_equity
+                    if risk_state.current_equity
+                    else 0.0,
                     "session": session_tag,
                     "trend_regime": trend_regime,
                     "volatility_regime": vol_regime,
@@ -294,7 +341,9 @@ def main() -> int:
             symbol_data_map=symbol_map,
             symbols_config=None,
         )
-        signals = evaluate_signals(symbol_sets, account_equity=args.account_equity, firm_label=args.firm)
+        signals = evaluate_signals(
+            symbol_sets, account_equity=args.account_equity, firm_label=args.firm
+        )
         append_signals(args.output, signals)
         emit_alerts(signals, args.alert_mode)
     finally:

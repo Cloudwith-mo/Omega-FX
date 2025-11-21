@@ -21,30 +21,90 @@ from scripts import run_exec_mt5_demo_from_signals as exec_loop  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the MT5 demo execution loop continuously.")
-    parser.add_argument("--hours", type=float, default=4.0, help="Total session duration.")
-    parser.add_argument("--sleep-seconds", type=float, default=60.0, help="Pause between iterations.")
+    parser = argparse.ArgumentParser(
+        description="Run the MT5 demo execution loop continuously."
+    )
+    parser.add_argument(
+        "--hours", type=float, default=4.0, help="Total session duration."
+    )
+    parser.add_argument(
+        "--sleep-seconds", type=float, default=60.0, help="Pause between iterations."
+    )
     parser.add_argument("--account_profile", type=str, default="METAQUOTES_DEMO")
     parser.add_argument("--starting_equity", type=float, default=100_000.0)
     parser.add_argument("--max_positions", type=int, default=6)
     parser.add_argument("--per_trade_risk_fraction", type=float, default=0.0005)
     parser.add_argument("--daily_loss_fraction", type=float, default=0.01)
-    parser.add_argument("--risk_fraction", type=float, default=0.1, help="Extra multiplier on firm risk fraction.")
-    parser.add_argument("--limit_trades", type=int, default=25, help="Trades to process per iteration.")
-    parser.add_argument("--summary_path", type=Path, default=Path("results/mt5_demo_exec_live_summary.json"))
-    parser.add_argument("--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv"))
+    parser.add_argument(
+        "--risk_fraction",
+        type=float,
+        default=0.1,
+        help="Extra multiplier on firm risk fraction.",
+    )
+    parser.add_argument(
+        "--limit_trades", type=int, default=25, help="Trades to process per iteration."
+    )
+    parser.add_argument(
+        "--summary_path",
+        type=Path,
+        default=Path("results/mt5_demo_exec_live_summary.json"),
+    )
+    parser.add_argument(
+        "--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv")
+    )
     parser.add_argument("--login", type=int, default=None)
     parser.add_argument("--server", type=str, default=None)
     parser.add_argument("--password", type=str, default=None)
-    parser.add_argument("--risk_tier", type=str, default=None, help="Named risk tier (e.g. conservative).")
-    parser.add_argument("--risk_env", type=str, default="demo", help="Risk profile environment key.")
-    parser.add_argument("--confirm_live", action="store_true", help="Required acknowledgement when --risk_env live is used.")
-    parser.add_argument("--strategy-id", type=str, default=DEFAULT_STRATEGY_ID, help="Strategy identifier for this session.")
-    parser.add_argument("--enable-mean-reversion", action=argparse.BooleanOptionalAction, default=True, help="Toggle the Omega MR strategy inside the demo loop.")
-    parser.add_argument("--mr-risk-scale", type=float, default=0.5, help="Relative risk scale for MR trades.")
-    parser.add_argument("--enable-session-momentum", action=argparse.BooleanOptionalAction, default=False, help="Toggle the London session strategy inside the demo loop.")
-    parser.add_argument("--session-risk-scale", type=float, default=0.25, help="Relative risk scale for session trades.")
-    parser.add_argument("--dry_run", action=argparse.BooleanOptionalAction, default=False, help="Force dry-run mode.")
+    parser.add_argument(
+        "--risk_tier",
+        type=str,
+        default=None,
+        help="Named risk tier (e.g. conservative).",
+    )
+    parser.add_argument(
+        "--risk_env", type=str, default="demo", help="Risk profile environment key."
+    )
+    parser.add_argument(
+        "--confirm_live",
+        action="store_true",
+        help="Required acknowledgement when --risk_env live is used.",
+    )
+    parser.add_argument(
+        "--strategy-id",
+        type=str,
+        default=DEFAULT_STRATEGY_ID,
+        help="Strategy identifier for this session.",
+    )
+    parser.add_argument(
+        "--enable-mean-reversion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Toggle the Omega MR strategy inside the demo loop.",
+    )
+    parser.add_argument(
+        "--mr-risk-scale",
+        type=float,
+        default=0.5,
+        help="Relative risk scale for MR trades.",
+    )
+    parser.add_argument(
+        "--enable-session-momentum",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Toggle the London session strategy inside the demo loop.",
+    )
+    parser.add_argument(
+        "--session-risk-scale",
+        type=float,
+        default=0.25,
+        help="Relative risk scale for session trades.",
+    )
+    parser.add_argument(
+        "--dry_run",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Force dry-run mode.",
+    )
     return parser.parse_args()
 
 
@@ -65,9 +125,9 @@ def _resolve_risk_tier(args: argparse.Namespace) -> str:
 
 def main() -> int:
     args = parse_args()
-    args.risk_env = (args.risk_env or 'demo').lower()
-    if args.risk_env == 'live' and not args.confirm_live:
-        print('Refusing to run in live environment without --confirm_live.')
+    args.risk_env = (args.risk_env or "demo").lower()
+    if args.risk_env == "live" and not args.confirm_live:
+        print("Refusing to run in live environment without --confirm_live.")
         return 1
     selected_risk_tier = _resolve_risk_tier(args)
     session_id = generate_session_id(args.risk_env, selected_risk_tier)
@@ -145,10 +205,17 @@ def main() -> int:
             args.summary_path.write_text(json.dumps(summary, indent=2))
             pnl = summary.get("final_equity", 0.0) - summary.get("initial_equity", 0.0)
             per_strategy = summary.get("per_strategy") or {}
-            strategy_parts = [f"{sid}={int((entry or {}).get('trades', 0))}" for sid, entry in sorted(per_strategy.items())]
+            strategy_parts = [
+                f"{sid}={int((entry or {}).get('trades', 0))}"
+                for sid, entry in sorted(per_strategy.items())
+            ]
             strategies_display = ", ".join(strategy_parts) if strategy_parts else "none"
             session_pnl_value = summary.get("session_pnl")
-            session_text = f" session_pnl={session_pnl_value:+.2f}" if session_pnl_value is not None else ""
+            session_text = (
+                f" session_pnl={session_pnl_value:+.2f}"
+                if session_pnl_value is not None
+                else ""
+            )
             print(
                 f"[Autopilot] iteration {iteration} "
                 f"trades={summary.get('number_of_trades', 0)} "

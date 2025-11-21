@@ -3,23 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Dict
 
 import pandas as pd
 
 from config.settings import (
-    ChallengeConfig,
     DEFAULT_BREAKOUT_CONFIG,
     DEFAULT_CHALLENGE,
     DEFAULT_CHALLENGE_CONFIG,
     DEFAULT_RISK_MODE,
+    ChallengeConfig,
     PropChallengeConfig,
 )
 from core.backtest import (
     BacktestResult,
+    BarEvent,
     DailyStats,
     SymbolFrameSet,
-    BarEvent,
     _build_symbol_frame_sets,
     build_event_stream,
     run_backtest,
@@ -47,7 +46,7 @@ class ChallengeOutcome:
     end_timestamp: pd.Timestamp
     max_observed_daily_loss_fraction: float
     max_trailing_dd_fraction: float
-    trades_per_symbol: Dict[str, int] = field(default_factory=dict)
+    trades_per_symbol: dict[str, int] = field(default_factory=dict)
 
 
 def _first_index_meeting(condition: pd.Series) -> int | None:
@@ -55,7 +54,9 @@ def _first_index_meeting(condition: pd.Series) -> int | None:
     return int(matches[0]) if len(matches) > 0 else None
 
 
-def _prepare_window(df: pd.DataFrame, seed_index: int, max_calendar_days: int | None) -> pd.DataFrame:
+def _prepare_window(
+    df: pd.DataFrame, seed_index: int, max_calendar_days: int | None
+) -> pd.DataFrame:
     window = df.iloc[seed_index:].copy()
     if window.empty:
         return window
@@ -77,7 +78,9 @@ def _day_end_map(equity_index: pd.Index) -> tuple[dict, str | None]:
     return mapping, tz
 
 
-def _get_day_end_timestamp(day_map: dict, tz: str | None, day: pd.Timestamp | pd.Timestamp | object) -> pd.Timestamp:
+def _get_day_end_timestamp(
+    day_map: dict, tz: str | None, day: pd.Timestamp | pd.Timestamp | object
+) -> pd.Timestamp:
     if isinstance(day, pd.Timestamp):
         day_key = day.date()
     else:
@@ -110,6 +113,7 @@ def _slice_symbol_map(
         end_ts = start_ts + pd.Timedelta(days=max_calendar_days)
     sliced: dict[str, pd.DataFrame] = {}
     for symbol, df in symbol_map.items():
+
         def _slice_df(frame: pd.DataFrame) -> pd.DataFrame | None:
             mask = frame["timestamp"] >= start_ts
             if end_ts is not None:
@@ -126,7 +130,9 @@ def _slice_symbol_map(
                 if subset is not None:
                     sliced_payload[tf_name] = subset
             if sliced_payload:
-                if required_timeframes and not required_timeframes.issubset({k.upper() for k in sliced_payload.keys()}):
+                if required_timeframes and not required_timeframes.issubset(
+                    {k.upper() for k in sliced_payload.keys()}
+                ):
                     continue
                 sliced[symbol] = sliced_payload
         else:
@@ -172,8 +178,12 @@ def _build_challenge_outcome(
     equity_index = equity_series.index
     day_end_map, tz = _day_end_map(equity_index)
 
-    target_equity = challenge_config.start_equity * (1 + challenge_config.profit_target_fraction)
-    loss_equity = challenge_config.start_equity * (1 - challenge_config.max_total_loss_fraction)
+    target_equity = challenge_config.start_equity * (
+        1 + challenge_config.profit_target_fraction
+    )
+    loss_equity = challenge_config.start_equity * (
+        1 - challenge_config.max_total_loss_fraction
+    )
 
     profit_idx = _first_index_meeting(equity_series >= target_equity)
     loss_idx = _first_index_meeting(equity_series <= loss_equity)
@@ -203,8 +213,13 @@ def _build_challenge_outcome(
                 break
 
     max_trading_days_ts = None
-    if challenge_config.max_trading_days and len(trading_days_records) >= challenge_config.max_trading_days:
-        max_trading_days_ts = trading_days_records[challenge_config.max_trading_days - 1][0]
+    if (
+        challenge_config.max_trading_days
+        and len(trading_days_records) >= challenge_config.max_trading_days
+    ):
+        max_trading_days_ts = trading_days_records[
+            challenge_config.max_trading_days - 1
+        ][0]
 
     events: list[tuple[pd.Timestamp, str]] = []
     if pass_ts is not None:
@@ -220,7 +235,9 @@ def _build_challenge_outcome(
     if max_trading_days_ts is not None:
         events.append((pd.Timestamp(max_trading_days_ts), "max_trading_days"))
     if challenge_config.max_calendar_days:
-        deadline = pd.Timestamp(start_timestamp) + pd.Timedelta(days=challenge_config.max_calendar_days)
+        deadline = pd.Timestamp(start_timestamp) + pd.Timedelta(
+            days=challenge_config.max_calendar_days
+        )
         if deadline > equity_index[-1]:
             deadline = equity_index[-1]
         events.append((deadline, "max_calendar_days"))
@@ -241,7 +258,9 @@ def _build_challenge_outcome(
 
     num_trading_days = _trading_days_up_to(end_timestamp)
     num_trades = sum(
-        1 for trade in backtest.trades if trade.get("exit_time") and pd.Timestamp(trade["exit_time"]) <= end_timestamp
+        1
+        for trade in backtest.trades
+        if trade.get("exit_time") and pd.Timestamp(trade["exit_time"]) <= end_timestamp
     )
 
     slice_equity = equity_series[equity_series.index <= end_timestamp]
@@ -249,7 +268,9 @@ def _build_challenge_outcome(
     peak_equity = slice_equity.max()
     min_equity = slice_equity.min()
 
-    hit_profit_target = profit_ts is not None and pd.Timestamp(profit_ts) <= end_timestamp
+    hit_profit_target = (
+        profit_ts is not None and pd.Timestamp(profit_ts) <= end_timestamp
+    )
     hit_total_loss = reason == "total_loss"
     hit_internal_stop = reason == "internal_stop"
     hit_prop_violation = reason == "prop_violation"
@@ -263,7 +284,9 @@ def _build_challenge_outcome(
 
     end_index = start_index
     if window is not None:
-        end_index_candidates = window.loc[window["timestamp"] <= end_timestamp, "orig_index"]
+        end_index_candidates = window.loc[
+            window["timestamp"] <= end_timestamp, "orig_index"
+        ]
         if not end_index_candidates.empty:
             end_index = int(end_index_candidates.iloc[-1])
 
@@ -435,6 +458,8 @@ def run_challenge_sweep(
             break
         outcomes.append(outcome)
     return outcomes
+
+
 def _frame_sets_from_map(
     symbol_data_map: dict[str, pd.DataFrame | dict[str, pd.DataFrame]],
     entry_mode: str | None,

@@ -6,26 +6,34 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover - CLI entry point
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.position_sizing import get_symbol_meta  # noqa: E402
 from core.constants import DEFAULT_STRATEGY_ID  # noqa: E402
+from core.position_sizing import get_symbol_meta  # noqa: E402
 
 DEFAULT_SUMMARY_PATH = Path("results/mt5_demo_exec_live_summary.json")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate MT5 execution reports for arbitrary windows.")
-    parser.add_argument("--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv"))
-    parser.add_argument("--hours", type=float, default=24.0, help="Rolling window size in hours.")
-    parser.add_argument("--tag", type=str, default="demo", help="Label used in the report filename.")
+    parser = argparse.ArgumentParser(
+        description="Generate MT5 execution reports for arbitrary windows."
+    )
+    parser.add_argument(
+        "--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv")
+    )
+    parser.add_argument(
+        "--hours", type=float, default=24.0, help="Rolling window size in hours."
+    )
+    parser.add_argument(
+        "--tag", type=str, default="demo", help="Label used in the report filename."
+    )
     parser.add_argument(
         "--output-path",
         type=Path,
@@ -38,8 +46,15 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SUMMARY_PATH,
         help="Live summary JSON path used to infer the latest risk tier.",
     )
-    parser.add_argument("--risk-tier", type=str, default=None, help="Override risk tier label in the report.")
-    parser.add_argument("--session-id", type=str, default=None, help="Filter log rows to a session id.")
+    parser.add_argument(
+        "--risk-tier",
+        type=str,
+        default=None,
+        help="Override risk tier label in the report.",
+    )
+    parser.add_argument(
+        "--session-id", type=str, default=None, help="Filter log rows to a session id."
+    )
     parser.add_argument(
         "--use-latest-session",
         action="store_true",
@@ -97,7 +112,9 @@ def generate_exec_report(
     summary_data = None
     if session_only or session_id:
         candidate = _load_summary_data()
-        if candidate and (session_id is None or candidate.get("session_id") == session_id):
+        if candidate and (
+            session_id is None or candidate.get("session_id") == session_id
+        ):
             summary_data = candidate
     stats = _summarize_window(
         log_path,
@@ -110,7 +127,7 @@ def generate_exec_report(
     )
     tier_label = risk_tier or read_latest_risk_tier()
     env_label = risk_env or read_latest_risk_env()
-    session_label = stats.get('session_id') or session_id or read_latest_session_id()
+    session_label = stats.get("session_id") or session_id or read_latest_session_id()
 
     stats["risk_env"] = env_label
     report_path = output_path or _default_report_path(tag, hours, window_end)
@@ -139,7 +156,10 @@ def generate_exec_report(
         f"- filtered_daily_loss: {stats['filters']['filtered_daily_loss']}",
         f"- filtered_invalid_stops: {stats['filters']['filtered_invalid_stops']}",
     ]
-    from core.monitoring_helpers import build_strategy_breakdown_entries as _build_strategy_breakdown_entries
+    from core.monitoring_helpers import (
+        build_strategy_breakdown_entries as _build_strategy_breakdown_entries,
+    )
+
     strategy_rows = _build_strategy_breakdown_entries(
         stats.get("strategy_breakdown"),
         expected_ids=stats.get("active_strategies") or None,
@@ -155,7 +175,9 @@ def generate_exec_report(
             wins_value = int(entry.get("wins", 0) or 0)
             losses_value = int(entry.get("losses", max(0, trades - wins_value)))
             pnl_value = float(entry.get("pnl", 0.0) or 0.0)
-            avg_value = float(entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0)
+            avg_value = float(
+                entry.get("avg_pnl", entry.get("avg_pnl_per_trade", 0.0)) or 0.0
+            )
             win_pct = float(entry.get("win_rate", 0.0) or 0.0) * 100
             lines.append(
                 f"| {entry.get('strategy_id')} | {trades} | {wins_value} | {losses_value} | {pnl_value:.2f} | {win_pct:.2f}% | {avg_value:.2f} |"
@@ -167,7 +189,9 @@ def generate_exec_report(
     lines.append("## Last 10 trades in window")
     lines.append("")
     if trades_rows:
-        lines.append("| Timestamp | Session | Strategy | Symbol | Direction | Volume | PnL | Signal Reason |")
+        lines.append(
+            "| Timestamp | Session | Strategy | Symbol | Direction | Volume | PnL | Signal Reason |"
+        )
         lines.append("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
         for trade in trades_rows:
             ts = trade.get("timestamp")
@@ -189,7 +213,9 @@ def _default_report_path(tag: str, hours: float, window_end: datetime) -> Path:
         hours_label = str(int(hours))
     else:
         hours_label = str(hours).replace(".", "p")
-    filename = f"exec_report_{tag}_{hours_label}h_{window_end.strftime('%Y%m%d%H%M')}.md"
+    filename = (
+        f"exec_report_{tag}_{hours_label}h_{window_end.strftime('%Y%m%d%H%M')}.md"
+    )
     return Path("results") / filename
 
 
@@ -229,12 +255,16 @@ def _summarize_window(
             row_mode = (row.get("data_mode") or "live").strip().lower() or "live"
             if not include_historical and row_mode != "live":
                 continue
-            row_strategy = (row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID).strip()
+            row_strategy = (
+                row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID
+            ).strip()
             if row_strategy:
                 last_strategy_id = row_strategy
 
             if equity is not None:
-                if timestamp < window_start and (not session_filter or row_session == session_filter):
+                if timestamp < window_start and (
+                    not session_filter or row_session == session_filter
+                ):
                     prior_equity = equity
                 elif (
                     timestamp > window_end
@@ -253,7 +283,9 @@ def _summarize_window(
                     "signal_reason": row.get("signal_reason", ""),
                     "strategy_id": row_strategy or DEFAULT_STRATEGY_ID,
                 }
-            entry_record = open_positions.pop(ticket, None) if event == "CLOSE" else None
+            entry_record = (
+                open_positions.pop(ticket, None) if event == "CLOSE" else None
+            )
 
             if not session_only and not (window_start <= timestamp <= window_end):
                 continue
@@ -276,7 +308,11 @@ def _summarize_window(
                 )
                 trade_results.append(trade_pnl)
                 trade_session = row_session or entry_record.get("session_id", "")
-                strategy_id = row_strategy or entry_record.get("strategy_id") or DEFAULT_STRATEGY_ID
+                strategy_id = (
+                    row_strategy
+                    or entry_record.get("strategy_id")
+                    or DEFAULT_STRATEGY_ID
+                )
                 entry_record["strategy_id"] = strategy_id
                 last_trades.append(
                     {
@@ -290,7 +326,9 @@ def _summarize_window(
                         "strategy_id": strategy_id,
                     }
                 )
-                bucket = strategy_stats.setdefault(strategy_id, {"trades": 0, "wins": 0, "pnl": 0.0})
+                bucket = strategy_stats.setdefault(
+                    strategy_id, {"trades": 0, "wins": 0, "pnl": 0.0}
+                )
                 bucket["trades"] += 1
                 bucket["pnl"] += trade_pnl
                 if trade_pnl > 0:
@@ -301,7 +339,9 @@ def _summarize_window(
 
     total_pnl = sum(trade_results)
     session_summary = None
-    if summary_data and (not session_filter or summary_data.get("session_id") == session_filter):
+    if summary_data and (
+        not session_filter or summary_data.get("session_id") == session_filter
+    ):
         session_summary = summary_data
 
     if session_only and session_summary:
@@ -312,8 +352,7 @@ def _summarize_window(
             or 0.0
         )
         end_equity = float(
-            session_summary.get("session_end_equity")
-            or (start_equity + total_pnl)
+            session_summary.get("session_end_equity") or (start_equity + total_pnl)
         )
     else:
         equity_points.sort(key=lambda item: item[0])
@@ -322,7 +361,9 @@ def _summarize_window(
             end_equity = equity_points[-1][1]
         else:
             start_equity = prior_equity if prior_equity is not None else 0.0
-            end_equity = post_window_equity if post_window_equity is not None else start_equity
+            end_equity = (
+                post_window_equity if post_window_equity is not None else start_equity
+            )
 
     pnl = end_equity - start_equity
     pnl_pct = (pnl / start_equity) if start_equity else 0.0
@@ -334,7 +375,9 @@ def _summarize_window(
     if session_summary and session_summary.get("ending_balance") is not None:
         end_balance = float(session_summary.get("ending_balance"))
     else:
-        balance_delta = session_summary.get("session_balance_pnl") if session_summary else None
+        balance_delta = (
+            session_summary.get("session_balance_pnl") if session_summary else None
+        )
         if balance_delta is None:
             balance_delta = pnl
         end_balance = float(start_balance + balance_delta)
@@ -364,7 +407,11 @@ def _summarize_window(
             "avg_pnl_per_trade": (pnl_value / trades) if trades else 0.0,
         }
 
-    if not strategy_breakdown and session_summary and session_summary.get("per_strategy"):
+    if (
+        not strategy_breakdown
+        and session_summary
+        and session_summary.get("per_strategy")
+    ):
         for strategy_id, entry in session_summary.get("per_strategy", {}).items():
             trades = int(entry.get("trades", 0))
             pnl_value = float(entry.get("pnl", 0.0) or 0.0)
@@ -420,7 +467,11 @@ def _summarize_window(
         "balance_pnl_pct": balance_pnl_pct,
         "active_strategies": active_strategies,
     }
-def _pnl_from_prices(symbol: str, direction: str, entry_price: float, exit_price: float, volume: float) -> float:
+
+
+def _pnl_from_prices(
+    symbol: str, direction: str, entry_price: float, exit_price: float, volume: float
+) -> float:
     meta = get_symbol_meta(symbol)
     pip_distance = (exit_price - entry_price) / meta.pip_size
     if direction == "short":
@@ -485,6 +536,7 @@ def _load_summary_data(path: Path | None = None) -> dict:
         return json.loads(target.read_text())
     except json.JSONDecodeError:
         return {}
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

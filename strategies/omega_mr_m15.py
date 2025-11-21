@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import pandas as pd
 
 from core.strategy import TradeDecision
@@ -13,7 +11,9 @@ RSI_LOW = 30.0
 RSI_HIGH = 70.0
 
 
-def generate_mean_reversion_signal(current_row: pd.Series, previous_row: Optional[pd.Series] = None) -> Optional[TradeDecision]:
+def generate_mean_reversion_signal(
+    current_row: pd.Series, previous_row: pd.Series | None = None
+) -> TradeDecision | None:
     """Bollinger/RSI fade strategy on M15 bars."""
     adx = float(current_row.get("ADX_14", 0.0) or 0.0)
     if adx >= ADX_THRESHOLD or pd.isna(adx):
@@ -56,4 +56,7 @@ def generate_mean_reversion_signal(current_row: pd.Series, previous_row: Optiona
     return None
 
 
-__all__ = ["OMEGA_MR_STRATEGY_ID", "generate_mean_reversion_signal"]
+__all__ = [
+    "OMEGA_MR_STRATEGY_ID",
+    "generate_mean_reversion_signal",
+]

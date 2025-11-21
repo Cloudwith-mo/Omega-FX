@@ -1,6 +1,7 @@
 """Strategy implementations and registry bindings."""
 
 from core.strategy_registry import register_strategy
+
 from .omega import OmegaM15Strategy
 
 register_strategy(

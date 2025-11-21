@@ -67,7 +67,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_combo(entry_mode: str, firm_profile: str, a_scale: float, daily_cap: float, max_pos: int, step: int) -> dict:
+def run_combo(
+    entry_mode: str,
+    firm_profile: str,
+    a_scale: float,
+    daily_cap: float,
+    max_pos: int,
+    step: int,
+) -> dict:
     env = os.environ.copy()
     env["OMEGA_TIER_SCALE_A"] = str(a_scale)
     env["OMEGA_INTERNAL_MAX_DAILY_LOSS"] = str(daily_cap)
@@ -113,9 +120,15 @@ def extract_row(summary: dict) -> dict:
 def main() -> int:
     args = parse_args()
     rows: list[dict] = []
-    for a_scale, daily_cap, max_pos in product(args.a_scales, args.daily_caps, args.max_positions):
-        print(f"\n=== Sensitivity combo: A={a_scale}, daily={daily_cap}, max_pos={max_pos} ===")
-        summary = run_combo(args.entry_mode, args.firm_profile, a_scale, daily_cap, max_pos, args.step)
+    for a_scale, daily_cap, max_pos in product(
+        args.a_scales, args.daily_caps, args.max_positions
+    ):
+        print(
+            f"\n=== Sensitivity combo: A={a_scale}, daily={daily_cap}, max_pos={max_pos} ==="
+        )
+        summary = run_combo(
+            args.entry_mode, args.firm_profile, a_scale, daily_cap, max_pos, args.step
+        )
         rows.append(extract_row(summary))
     df = pd.DataFrame(rows)
     args.output.parent.mkdir(parents=True, exist_ok=True)

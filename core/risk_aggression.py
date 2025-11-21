@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import pandas as pd
 
@@ -22,7 +21,7 @@ from core.risk import RiskMode
 EDGE_MAP_PATH = Path("results/trade_edge_map.csv")
 OVERRIDE_PATH = Path(RISK_AGGRESSION_MAP_PATH)
 
-Combo = Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]
+Combo = tuple[str | None, str | None, str | None, str | None]
 
 RISK_PROFILE_PRESETS = {
     "FULL": {"A": 1.5, "B": 0.75, "UNKNOWN": 0.5, "C": 0.0},
@@ -78,7 +77,7 @@ class RiskAggressionResult:
     allowed: bool
     risk_scale: float
     tier: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 def _normalize_value(value: object) -> str | None:
@@ -97,9 +96,9 @@ def _combo_from_row(row: pd.Series) -> Combo:
     )
 
 
-def _load_edge_map() -> Dict[Combo, ComboTier]:
+def _load_edge_map() -> dict[Combo, ComboTier]:
     tier_scales = _resolve_scales()
-    combo_map: Dict[Combo, ComboTier] = {}
+    combo_map: dict[Combo, ComboTier] = {}
     if not EDGE_MAP_PATH.exists():
         return combo_map
     try:
@@ -117,7 +116,7 @@ def _load_edge_map() -> Dict[Combo, ComboTier]:
         if trades < RISK_AGGRESSION_MIN_TRADES:
             continue
 
-        tier: Optional[str] = None
+        tier: str | None = None
         if expectancy >= RISK_AGGRESSION_A_EXPECTANCY:
             tier = "A"
         elif expectancy >= RISK_AGGRESSION_B_EXPECTANCY:
@@ -133,8 +132,8 @@ def _load_edge_map() -> Dict[Combo, ComboTier]:
     return combo_map
 
 
-def _load_override_map() -> Dict[Combo, ComboTier]:
-    combo_map: Dict[Combo, ComboTier] = {}
+def _load_override_map() -> dict[Combo, ComboTier]:
+    combo_map: dict[Combo, ComboTier] = {}
     if not OVERRIDE_PATH.exists():
         return combo_map
     try:
@@ -165,14 +164,14 @@ def _load_override_map() -> Dict[Combo, ComboTier]:
     return combo_map
 
 
-def _build_combo_map() -> Dict[Combo, ComboTier]:
+def _build_combo_map() -> dict[Combo, ComboTier]:
     combo_map = _load_edge_map()
     overrides = _load_override_map()
     combo_map.update(overrides)
     return combo_map
 
 
-def _get_combo_tiers() -> Dict[Combo, ComboTier]:
+def _get_combo_tiers() -> dict[Combo, ComboTier]:
     global _combo_cache
     if _combo_cache is None:
         _combo_cache = _build_combo_map()

@@ -15,8 +15,13 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover - path hack for CLI usage
 
 import pandas as pd
 
-from config.settings import ACCOUNT_PHASE_PROFILES, DEFAULT_DATA_PATH, DEFAULT_TRADING_FIRM, FIRM_PROFILES
-from core.backtest import REQUIRED_COLUMNS, run_backtest
+from config.settings import (
+    ACCOUNT_PHASE_PROFILES,
+    DEFAULT_DATA_PATH,
+    DEFAULT_TRADING_FIRM,
+    FIRM_PROFILES,
+)
+from core.backtest import run_backtest
 
 try:  # pragma: no cover
     import matplotlib.pyplot as plt
@@ -119,7 +124,9 @@ def main() -> int:
     trading_days = max(1, len(result.daily_stats))
     trades_per_year = result.number_of_trades / max(1, trading_days / 252)
 
-    combo_summary = {str(combo): count for combo, count in result.pre_risk_combo_counts.items()}
+    combo_summary = {
+        str(combo): count for combo, count in result.pre_risk_combo_counts.items()
+    }
 
     metrics = {
         "starting_equity": args.starting_equity,
@@ -191,7 +198,9 @@ def main() -> int:
         trades_tier = tier_counts.get(tier, 0)
         expectancy = tier_expectancy.get(tier, 0.0)
         trades_py = tier_trades_year.get(tier, 0.0)
-        print(f"  {tier:<8} trades={trades_tier:4d} | expectancy={expectancy:.2f}R | trades/yr={trades_py:.1f}")
+        print(
+            f"  {tier:<8} trades={trades_tier:4d} | expectancy={expectancy:.2f}R | trades/yr={trades_py:.1f}"
+        )
     if metrics["trades_per_symbol"]:
         print("Trades per symbol:")
         for symbol, count in metrics["trades_per_symbol"].items():

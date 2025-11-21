@@ -1,20 +1,36 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Build a consolidated notification snapshot from the latest exec reports."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, Tuple
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Assemble notification summary from exec reports.")
+    parser = argparse.ArgumentParser(
+        description="Assemble notification summary from exec reports."
+    )
     parser.add_argument("--results-dir", type=Path, default=Path("results"))
     parser.add_argument("--tag", type=str, default="demo")
-    parser.add_argument("--hours-fast", type=str, default="6", help="Short window hours label (default 6).")
-    parser.add_argument("--hours-slow", type=str, default="24", help="Long window hours label (default 24).")
-    parser.add_argument("--session-id", type=str, default=None, help="Prefer reports from this session id.")
+    parser.add_argument(
+        "--hours-fast",
+        type=str,
+        default="6",
+        help="Short window hours label (default 6).",
+    )
+    parser.add_argument(
+        "--hours-slow",
+        type=str,
+        default="24",
+        help="Long window hours label (default 24).",
+    )
+    parser.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Prefer reports from this session id.",
+    )
     return parser.parse_args()
 
 
@@ -39,7 +55,7 @@ def build_notification_snapshot(
     hours_fast: str,
     hours_slow: str,
     session_id: str | None = None,
-) -> Tuple[str, Path]:
+) -> tuple[str, Path]:
     if not results_dir.exists():
         raise FileNotFoundError(f"Results directory {results_dir} not found.")
     report_fast = _latest_report(results_dir, tag, hours_fast, session_id=session_id)
@@ -62,23 +78,29 @@ def build_notification_snapshot(
     return summary, output_path
 
 
-def _latest_report(results_dir: Path, tag: str, hours_label: str, session_id: str | None = None) -> Path:
+def _latest_report(
+    results_dir: Path, tag: str, hours_label: str, session_id: str | None = None
+) -> Path:
     pattern = f"exec_report_{tag}_{hours_label}h_*.md"
-    matches = sorted(results_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    matches = sorted(
+        results_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     if not matches:
         raise FileNotFoundError(f"No report matching {pattern} in {results_dir}")
     if session_id:
         for candidate in matches:
             data = _parse_report(candidate)
-            if data.get('Session id') == session_id:
+            if data.get("Session id") == session_id:
                 return candidate
-        raise FileNotFoundError(f"No report for session {session_id} matching {pattern}")
+        raise FileNotFoundError(
+            f"No report for session {session_id} matching {pattern}"
+        )
     return matches[0]
 
 
-def _parse_report(path: Path) -> Dict[str, float | str]:
+def _parse_report(path: Path) -> dict[str, float | str]:
     content = path.read_text(encoding="utf-8").splitlines()
-    data: Dict[str, float | str] = {
+    data: dict[str, float | str] = {
         "filtered_max_positions": 0,
         "filtered_daily_loss": 0,
         "filtered_invalid_stops": 0,

@@ -15,18 +15,22 @@ def test_omega_m15_required_features() -> None:
 
 def test_omega_m15_on_bar_output() -> None:
     strategy = OmegaM15Strategy()
-    current = pd.Series({
-        "close": 1.1000,
-        "SMA_fast": 1.1010,
-        "SMA_slow": 1.0990,
-        "ATR_14": 0.0005,
-    })
-    previous = pd.Series({
-        "close": 1.0995,
-        "SMA_fast": 1.0980,
-        "SMA_slow": 1.0990,
-        "ATR_14": 0.0005,
-    })
+    current = pd.Series(
+        {
+            "close": 1.1000,
+            "SMA_fast": 1.1010,
+            "SMA_slow": 1.0990,
+            "ATR_14": 0.0005,
+        }
+    )
+    previous = pd.Series(
+        {
+            "close": 1.0995,
+            "SMA_fast": 1.0980,
+            "SMA_slow": 1.0990,
+            "ATR_14": 0.0005,
+        }
+    )
     signal = strategy.on_bar(
         timestamp=pd.Timestamp("2024-01-01T00:15:00Z"),
         features_by_tf={

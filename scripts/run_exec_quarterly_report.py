@@ -1,23 +1,32 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Wrapper to emit execution reports on arbitrary hour windows."""
 
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.run_daily_exec_report import (generate_exec_report, read_latest_risk_tier, read_latest_risk_env, read_latest_session_id)  # noqa: E402
+from scripts.run_daily_exec_report import (
+    generate_exec_report,
+    read_latest_risk_env,
+    read_latest_risk_tier,
+    read_latest_session_id,
+)  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Quarter-day style execution report generator.")
-    parser.add_argument("--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv"))
+    parser = argparse.ArgumentParser(
+        description="Quarter-day style execution report generator."
+    )
+    parser.add_argument(
+        "--log_path", type=Path, default=Path("results/mt5_demo_exec_log.csv")
+    )
     parser.add_argument("--hours", type=float, default=6.0)
     parser.add_argument("--tag", type=str, default="demo")
     parser.add_argument(
@@ -49,7 +58,9 @@ def main() -> int:
         if float(int(args.hours)) == float(args.hours)
         else str(args.hours).replace(".", "p")
     )
-    output_name = f"exec_report_{args.tag}_{hours_label}h_{window_end.strftime('%Y%m%d%H%M')}.md"
+    output_name = (
+        f"exec_report_{args.tag}_{hours_label}h_{window_end.strftime('%Y%m%d%H%M')}.md"
+    )
     output_path = Path("results") / output_name
     tier = args.risk_tier or read_latest_risk_tier(args.summary_path)
     env_label = read_latest_risk_env(args.summary_path)

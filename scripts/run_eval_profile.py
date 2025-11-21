@@ -21,7 +21,9 @@ SUMMARY_PATH = RESULTS_DIR / "challenge_summary.json"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Execute the blessed FTMO-style eval profile.")
+    parser = argparse.ArgumentParser(
+        description="Execute the blessed FTMO-style eval profile."
+    )
     parser.add_argument(
         "--firm",
         choices=sorted(DEFAULT_EVAL_PROFILE_PER_FIRM.keys()),

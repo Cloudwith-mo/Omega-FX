@@ -9,7 +9,7 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -18,16 +18,30 @@ if str(REPO_ROOT) not in sys.path:
 from core.constants import DEFAULT_STRATEGY_ID
 from core.position_sizing import get_symbol_meta
 
-
 DEFAULT_LOG_PATH = Path("results/mt5_demo_exec_log.csv")
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect the latest MT5 demo trades.")
     parser.add_argument("--log-path", type=Path, default=DEFAULT_LOG_PATH)
-    parser.add_argument("--hours", type=float, default=None, help="Restrict to trades within the last N hours.")
-    parser.add_argument("--session-id", type=str, default=None, help="Filter trades for a specific session id.")
-    parser.add_argument("--limit", type=int, default=10, help="Maximum number of trades to output.")
-    parser.add_argument("--include-historical", action="store_true", help="Include non-live log rows.")
+    parser.add_argument(
+        "--hours",
+        type=float,
+        default=None,
+        help="Restrict to trades within the last N hours.",
+    )
+    parser.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Filter trades for a specific session id.",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=10, help="Maximum number of trades to output."
+    )
+    parser.add_argument(
+        "--include-historical", action="store_true", help="Include non-live log rows."
+    )
     return parser.parse_args()
 
 
@@ -45,19 +59,26 @@ def main() -> int:
 
 
 def load_trades(
-    log_path: Path, *, hours: float | None, session_id: str | None, limit: int, include_historical: bool = False
-) -> List[Dict[str, Any]]:
+    log_path: Path,
+    *,
+    hours: float | None,
+    session_id: str | None,
+    limit: int,
+    include_historical: bool = False,
+) -> list[dict[str, Any]]:
     if not log_path.exists():
         raise FileNotFoundError(f"Log file {log_path} not found.")
     cutoff = None
     if hours is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=max(hours, 0.0))
-    open_positions: Dict[str, Dict[str, Any]] = {}
-    trades: List[Dict[str, Any]] = []
+    open_positions: dict[str, dict[str, Any]] = {}
+    trades: list[dict[str, Any]] = []
     with log_path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            timestamp = _parse_timestamp(row["timestamp"]) if row.get("timestamp") else None
+            timestamp = (
+                _parse_timestamp(row["timestamp"]) if row.get("timestamp") else None
+            )
             if timestamp is None:
                 continue
             row_mode = (row.get("data_mode") or "live").strip().lower() or "live"
@@ -66,7 +87,9 @@ def load_trades(
             row_session = (row.get("session_id") or "").strip()
             if session_id and row_session != session_id:
                 continue
-            row_strategy = (row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID).strip()
+            row_strategy = (
+                row.get("strategy_id") or row.get("strategy_tag") or DEFAULT_STRATEGY_ID
+            ).strip()
             event = row.get("event")
             ticket = row.get("ticket") or ""
             price = _safe_float(row.get("price"))
@@ -88,7 +111,13 @@ def load_trades(
                 entry = open_positions.pop(ticket, None)
                 if not entry:
                     continue
-                pnl = _pnl_from_prices(entry["symbol"], entry["direction"], entry["price"], price, entry["volume"])
+                pnl = _pnl_from_prices(
+                    entry["symbol"],
+                    entry["direction"],
+                    entry["price"],
+                    price,
+                    entry["volume"],
+                )
                 trade_entry = {
                     "timestamp": timestamp.isoformat(),
                     "session_id": row_session or entry.get("session_id", ""),
@@ -97,14 +126,18 @@ def load_trades(
                     "volume": entry["volume"],
                     "pnl": pnl,
                     "signal_reason": entry.get("signal_reason", ""),
-                    "strategy_id": entry.get("strategy_id") or row_strategy or DEFAULT_STRATEGY_ID,
+                    "strategy_id": entry.get("strategy_id")
+                    or row_strategy
+                    or DEFAULT_STRATEGY_ID,
                 }
                 trades.append(trade_entry)
     trades.sort(key=lambda item: item["timestamp"], reverse=True)
     return trades[: max(0, limit)]
 
 
-def _pnl_from_prices(symbol: str, direction: str, entry_price: float, exit_price: float, volume: float) -> float:
+def _pnl_from_prices(
+    symbol: str, direction: str, entry_price: float, exit_price: float, volume: float
+) -> float:
     meta = get_symbol_meta(symbol)
     pip_distance = (exit_price - entry_price) / meta.pip_size
     if direction == "short":
