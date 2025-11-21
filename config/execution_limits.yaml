@@ -33,3 +33,30 @@ reporting:
   
   # Alert if any SL distance is below min + this margin
   sl_margin_pips: 5
+
+# Prop Firm Evaluation Profiles
+prop_eval_aggressive:
+  max_trades_per_symbol_per_hour: 4
+  max_trades_per_strategy_per_day: 15
+  min_seconds_between_trades_per_symbol: 300  # 5 mins
+  min_sl_pips:
+    EURUSD: 8
+    GBPUSD: 8
+    USDJPY: 8
+    XAUUSD: 40
+    GCF: 40
+    default: 8
+  min_hold_seconds: 300  # 5 mins
+
+prop_eval_conservative:
+  max_trades_per_symbol_per_hour: 1
+  max_trades_per_strategy_per_day: 5
+  min_seconds_between_trades_per_symbol: 1800 # 30 mins
+  min_sl_pips:
+    EURUSD: 15
+    GBPUSD: 15
+    USDJPY: 15
+    XAUUSD: 60
+    GCF: 60
+    default: 15
+  min_hold_seconds: 1800 # 30 mins

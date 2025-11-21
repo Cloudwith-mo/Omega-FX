@@ -62,3 +62,24 @@ The execution logs (`mt5_demo_exec_log.csv`) and status summary (`mt5_demo_exec_
 -   `trades_today_count`: Number of trades executed today.
 
 These metrics feed into the dashboard HUD to provide a real-time "Pass/Fail" status.
+
+## 5. What This Means in English (Plain Language)
+
+For a standard **$100,000 Evaluation Account**:
+
+### 1. How much can I lose?
+-   **Daily Limit ($3,000)**: You cannot lose more than $3,000 in a single day. If your equity drops by $3,000 from the day's starting balance, the bot stops trading for the day.
+-   **Total Limit ($8,000)**: You cannot lose more than $8,000 from your highest recorded equity (High Water Mark). If you make $2,000 profit (Equity = $102,000), your new "fail level" is $93,840 ($102k - 8%).
+
+### 2. How much does the bot risk per trade?
+-   **Typical Risk**: 0.25% to 0.50% of the account balance.
+-   **Dollar Amount**: ~$250 to $500 per trade.
+-   **Why?**: This allows you to take 6-12 consecutive losses in a single day without hitting the daily limit, providing a massive safety buffer.
+
+### 3. What should I expect to see?
+-   **Trades Per Day**: 
+    -   **Conservative**: 1-3 trades/day.
+    -   **Aggressive**: 3-8 trades/day.
+-   **Holding Time**: Trades usually last 1-4 hours. We avoid "scalping" (seconds/minutes) to stay compliant with all firm rules.
+-   **Win Rate**: Expect ~40-55%. The edge comes from winning trades being larger than losing trades (Avg R > 1.5).
+

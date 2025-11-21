@@ -170,6 +170,7 @@ def main():
     parser.add_argument("--hours", type=int, default=72, help="Hours to analyze (default: 72)")
     parser.add_argument("--env", choices=["demo", "live"], default="demo", help="Environment")
     parser.add_argument("--log", help="Path to execution log CSV (overrides default)")
+    parser.add_argument("--prop-eval", action="store_true", help="Use stricter Prop Firm Evaluation thresholds")
     args = parser.parse_args()
     
     # Determine log path
@@ -183,6 +184,14 @@ def main():
         return 1
     
     limits = load_safety_limits()
+    
+    if args.prop_eval:
+        print("🛡️  Using Stricter Prop Firm Evaluation Thresholds")
+        # Override with stricter defaults if not explicitly in config
+        # Ideally these should come from config, but for now we harden them here
+        limits["min_hold_seconds"] = max(limits.get("min_hold_seconds", 600), 1800) # Min 30 mins
+        limits["max_trades_per_symbol_per_hour"] = min(limits.get("max_trades_per_symbol_per_hour", 2), 1) # Max 1/hour
+        
     result = analyze_trades(log_path, args.hours, limits)
     
     print(f"\n{'='*60}")

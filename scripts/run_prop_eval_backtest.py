@@ -10,11 +10,33 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from core.backtest import run_backtest
+from core.backtest import run_backtest
 from config.settings import SYMBOLS, resolve_firm_profile
+import argparse
+import yaml
 
 def main():
+    parser = argparse.ArgumentParser(description="Run Prop Firm Evaluation Backtest")
+    parser.add_argument("--profile", choices=["default", "aggressive", "conservative"], default="default", help="Risk/Limit profile")
+    args = parser.parse_args()
+
     print("🚀 Running Prop Firm Evaluation Backtest...")
-    print("Configuration: PROP_EVAL")
+    print(f"Configuration: PROP_EVAL ({args.profile.upper()})")
+    
+    # Load limits if profile is not default
+    limits = {}
+    if args.profile != "default":
+        try:
+            with open("config/execution_limits.yaml") as f:
+                config = yaml.safe_load(f)
+                key = f"prop_eval_{args.profile}"
+                if key in config:
+                    limits = config[key]
+                    print(f"  Loaded {args.profile} limits: {limits}")
+                else:
+                    print(f"  ⚠️ Profile {key} not found in config, using defaults.")
+        except Exception as e:
+            print(f"  ⚠️ Failed to load limits: {e}")
     
     # Verify profile loading
     profile = resolve_firm_profile("PROP_EVAL")
