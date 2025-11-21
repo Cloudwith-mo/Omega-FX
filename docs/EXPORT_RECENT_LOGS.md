@@ -9,6 +9,12 @@
 - Generating summaries for specific time periods
 - Extracting data for analysis tools
 
+## Quick export from any machine
+
+1. `git pull`
+2. `python scripts/run_export_bundle.py --days 14 --env demo`
+3. Check `results/data_exports/` for `exec_log_last_14d_demo.csv` and `behavior_summary_last_14d_demo.txt` (filenames vary with the window/env).
+
 ## Usage
 
 ### Basic Examples

@@ -20,6 +20,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Ensure UTF-8 stdout so emoji/special chars don't crash on Windows terminals
+try:  # pragma: no cover - platform/terminal dependent
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 from scripts.export_recent_logs import export_recent_logs  # noqa: E402
 from scripts.run_daily_exec_report import _parse_timestamp, _safe_float  # noqa: E402
 from core.position_sizing import get_symbol_meta  # noqa: E402
@@ -491,12 +497,12 @@ def main() -> int:
         # Save markdown report
         md_path.parent.mkdir(parents=True, exist_ok=True)
         md_path.write_text(report, encoding="utf-8")
-        print(f"\n✅ Markdown report saved: {md_path}")
+        print(f"\n[OK] Markdown report saved: {md_path}")
         
         # Save CSV if requested
         if args.output_csv:
             save_csv_aggregates(analysis["per_strategy"], args.output_csv)
-            print(f"✅ CSV aggregates saved: {args.output_csv}")
+            print(f"[OK] CSV aggregates saved: {args.output_csv}")
         
         # Clean up temp file
         if temp_export.exists():
