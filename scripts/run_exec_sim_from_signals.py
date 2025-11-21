@@ -68,6 +68,12 @@ def parse_args() -> argparse.Namespace:
         default=0.02,
         help="Daily loss cap fraction before new trades are filtered.",
     )
+    parser.add_argument(
+        "--entry_mode",
+        choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
+        default=None,
+        help="Override entry mode (default: use preset).",
+    )
     return parser.parse_args()
 
 
@@ -78,7 +84,7 @@ def main() -> int:
         starting_equity=args.starting_equity,
         data_source=None,
         symbol_data_map=None,
-        entry_mode=FTMO_EVAL_PRESET.entry_mode,
+        entry_mode=args.entry_mode or FTMO_EVAL_PRESET.entry_mode,
         trading_firm=FTMO_EVAL_PRESET.trading_firm,
         account_phase=FTMO_EVAL_PRESET.account_phase,
     )

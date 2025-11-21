@@ -99,6 +99,12 @@ def parse_args() -> argparse.Namespace:
         default=0.25,
         help="Relative risk scale for London session trades.",
     )
+    parser.add_argument(
+        "--entry_mode",
+        choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
+        default=None,
+        help="Override entry mode (default: use preset).",
+    )
     return parser.parse_args()
 
 
@@ -130,7 +136,7 @@ def run_exec_once(args: argparse.Namespace) -> dict:
     backtest = run_backtest(
         df=None,
         starting_equity=args.starting_equity,
-        entry_mode=FTMO_EVAL_PRESET.entry_mode,
+        entry_mode=args.entry_mode or FTMO_EVAL_PRESET.entry_mode,
         trading_firm=FTMO_EVAL_PRESET.trading_firm,
         account_phase=FTMO_EVAL_PRESET.account_phase,
         extra_strategy_factories=extra_strategies or None,
