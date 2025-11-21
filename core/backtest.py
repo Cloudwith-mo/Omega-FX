@@ -37,6 +37,7 @@ from core.risk import (
     can_open_new_trade,
 )
 from core.risk_aggression import set_custom_tier_scales, should_allow_risk_aggression
+from core.risk_utils import pips_to_price
 from core.sizing import compute_position_size
 from core.strategy import TradeDecision, annotate_indicators, generate_signal
 
@@ -1048,8 +1049,8 @@ def run_backtest(
                         risk_mode=risk_state.current_mode,
                         stop_distance_pips=signal.stop_distance_pips,
                     )
-                    pip_to_price = signal.stop_distance_pips / 10_000
-                    tp_to_price = signal.take_profit_distance_pips / 10_000
+                    pip_to_price = pips_to_price(signal.stop_distance_pips, event.symbol)
+                    tp_to_price = pips_to_price(signal.take_profit_distance_pips, event.symbol) if signal.take_profit_distance_pips else 0.0
                     entry_price = float(row["close"])
 
                     breakout_high = float(row.get("HIGH_BREAKOUT", float("nan")))

@@ -36,12 +36,13 @@ from core.backtest import (  # noqa: E402
     build_event_stream,
 )
 from core.filters import TradeTags, should_allow_trade  # noqa: E402
-from core.risk import RISK_PROFILES, RiskState  # noqa: E402
+from core.position_sizing import compute_position_size, get_symbol_meta  # noqa: E402
+from core.risk import RISK_PROFILES, RiskMode, RiskState  # noqa: E402
+from core.risk_utils import pips_to_price  # noqa: E402
 from core.risk_aggression import (  # noqa: E402
     set_custom_tier_scales,
     should_allow_risk_aggression,
 )
-from core.sizing import compute_position_size  # noqa: E402
 from core.strategy import generate_signal  # noqa: E402
 
 
@@ -205,14 +206,14 @@ def evaluate_signals(
                 risk_mode=risk_state.current_mode,
                 stop_distance_pips=signal.stop_distance_pips,
             )
-            pip_to_price = signal.stop_distance_pips / 10_000
+            pip_to_price = pips_to_price(signal.stop_distance_pips, symbol)
             entry_price = float(row["close"])
             stop_loss = (
                 entry_price - pip_to_price
                 if signal.action == "long"
                 else entry_price + pip_to_price
             )
-            tp_to_price = signal.take_profit_distance_pips / 10_000
+            tp_to_price = pips_to_price(signal.take_profit_distance_pips, symbol) if signal.take_profit_distance_pips else 0.0
             take_profit = (
                 entry_price + tp_to_price
                 if signal.action == "long"
