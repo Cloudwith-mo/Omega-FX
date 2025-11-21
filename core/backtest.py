@@ -701,7 +701,7 @@ def run_backtest(
     )
     set_custom_tier_scales(phase_profile.tier_scales if phase_profile else None)
     resolved_entry_mode = _resolve_entry_mode(
-        phase_profile.entry_mode if phase_profile else entry_mode
+        entry_mode if entry_mode else (phase_profile.entry_mode if phase_profile else None)
     )
     firm_profile_cfg = resolve_firm_profile(
         phase_profile.firm_profile if phase_profile else firm_profile
