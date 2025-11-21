@@ -170,9 +170,11 @@ def build_status_payload(
         session_stats.get("strategy_breakdown") if session_stats else None,
         expected_ids=list(dict.fromkeys(expected_latest)),
     )
-        strategy_breakdown_report = build_strategy_breakdown_entries(
-            stats.get("strategy_breakdown"),
-            expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
+    expected_report = stats.get("active_strategies") or [DEFAULT_STRATEGY_ID]
+    strategy_breakdown_report = build_strategy_breakdown_entries(
+        stats.get("strategy_breakdown"),
+        expected_ids=list(dict.fromkeys(expected_report)),
+    )
     primary_strategy_id = summary.get("strategy_id") or (
         strategy_breakdown_latest[0]["strategy_id"]
         if strategy_breakdown_latest
@@ -349,7 +351,6 @@ def build_report_payload(
     strategy_breakdown_report = build_strategy_breakdown_entries(
         stats.get("strategy_breakdown"),
         expected_ids=list(dict.fromkeys(expected_report or [DEFAULT_STRATEGY_ID])),
-    )
     )
     primary_strategy_id = stats.get("strategy_id") or (
         strategy_breakdown_report[0]["strategy_id"]
