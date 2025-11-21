@@ -23,6 +23,10 @@ DEFAULT_SYMBOL_META = {
         "GBPUSD", pip_value_per_standard_lot=10.0, pip_size=0.0001
     ),
     "USDJPY": SymbolMeta("USDJPY", pip_value_per_standard_lot=9.0, pip_size=0.01),
+    "GC=F": SymbolMeta("GC=F", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "GCF": SymbolMeta("GCF", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "GCF_1H": SymbolMeta("GCF_1H", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "XAUUSD": SymbolMeta("XAUUSD", pip_value_per_standard_lot=1.0, pip_size=0.01),
 }
 
 

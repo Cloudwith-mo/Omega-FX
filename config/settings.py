@@ -95,21 +95,27 @@ RISK_PROFILE_PRESET = "FULL"
 SYMBOLS = [
     SymbolConfig(
         name="EURUSD",
-        h1_path="data/EURUSD_H1.csv",
-        m15_path="data/EURUSD_M15.csv",
-        h4_path="data/EURUSD_H4.csv",
+        h1_path="data/EURUSD_1h.csv",
+        m15_path="data/EURUSD_15m.csv",
+        h4_path="data/EURUSD_4h.csv",
     ),
     SymbolConfig(
         name="GBPUSD",
-        h1_path="data/GBPUSD_H1.csv",
-        m15_path="data/GBPUSD_M15.csv",
-        h4_path="data/GBPUSD_H4.csv",
+        h1_path="data/GBPUSD_1h.csv",
+        m15_path="data/GBPUSD_15m.csv",
+        h4_path="data/GBPUSD_4h.csv",
     ),
     SymbolConfig(
         name="USDJPY",
-        h1_path="data/USDJPY_H1.csv",
-        m15_path="data/USDJPY_M15.csv",
-        h4_path="data/USDJPY_H4.csv",
+        h1_path="data/USDJPY_1h.csv",
+        m15_path="data/USDJPY_15m.csv",
+        h4_path="data/USDJPY_4h.csv",
+    ),
+    SymbolConfig(
+        name="GCF",
+        h1_path="data/GCF_1h.csv",
+        m15_path="data/GCF_15m.csv",
+        h4_path="data/GCF_4h.csv",
     ),
 ]
 

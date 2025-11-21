@@ -9,6 +9,7 @@ import pandas as pd
 
 from config.settings import DEFAULT_BREAKOUT_CONFIG
 from core.constants import DEFAULT_STRATEGY_ID
+from core.position_sizing import get_symbol_meta
 
 
 @dataclass
@@ -101,7 +102,9 @@ def _annotate_adx(df: pd.DataFrame, period: int = 14) -> None:
     df["ADX_14"] = adx.fillna(0.0)
 
 
-def generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDecision:
+def generate_signal(
+    current_row: pd.Series, previous_row: pd.Series, symbol: str = "EURUSD"
+) -> TradeDecision:
     """
     Generate SMA crossover decisions with ATR-based stops/take-profit.
     """
@@ -124,7 +127,11 @@ def generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDec
     fast_prev = previous_row["SMA_fast"]
     slow_prev = previous_row["SMA_slow"]
 
-    atr_pips = float(current_row["ATR_14"]) * 10_000
+    meta = get_symbol_meta(symbol)
+    # 1 pip = meta.pip_size.
+    # If ATR is 0.0020 and pip_size is 0.0001, then ATR in pips = 20.
+    atr_value = float(current_row["ATR_14"])
+    atr_pips = atr_value / meta.pip_size
     stop_distance = 1.5 * atr_pips
     tp_distance = 3.0 * atr_pips
 

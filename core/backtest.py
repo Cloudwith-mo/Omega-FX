@@ -40,7 +40,7 @@ from core.risk_aggression import set_custom_tier_scales, should_allow_risk_aggre
 from core.sizing import compute_position_size
 from core.strategy import TradeDecision, annotate_indicators, generate_signal
 
-StrategyFn = Callable[[pd.Series, pd.Series], TradeDecision | None]
+StrategyFn = Callable[[pd.Series, pd.Series, str], TradeDecision | None]
 REQUIRED_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
 
@@ -836,7 +836,7 @@ def run_backtest(
             signals: list[TradeDecision] = []
             for strategy_fn in strategy_functions:
                 try:
-                    decision = strategy_fn(row, prev_row)
+                    decision = strategy_fn(row, prev_row, symbol=event.symbol)
                 except Exception:
                     continue
                 if decision is None or decision.action == "flat":
