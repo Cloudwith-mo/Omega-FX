@@ -552,7 +552,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         from core.risk_utils import price_to_pips
         
         # Calculate enriched metrics for CLOSE events
-        sl_pips = tp_pips = hold_secs = risk_perc = ""
+        sl_pips = tp_pips = hold_secs = risk_perc = r_multiple = ""
         
         if event == "CLOSE":
             # SL distance in pips
@@ -571,6 +571,15 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             # Risk percentage
             if self.daily_start_equity > 0:
                 risk_perc = f"{(position.max_loss_amount / self.daily_start_equity) * 100:.3f}"
+            
+            # R-multiple (PnL / risk_amount)
+            pnl = price - position.entry_price
+            if position.direction == "short":
+                pnl = -pnl
+            pnl_dollars = pnl * position.volume * 100_000  # Assuming standard lots in dollars
+            
+            if position.max_loss_amount > 0:
+                r_multiple = f"{pnl_dollars / position.max_loss_amount:.2f}"
         
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8", newline="") as fh:
@@ -594,6 +603,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 tp_pips,
                 hold_secs,
                 risk_perc,
+                r_multiple,
             ])
 
     def _ensure_log_header(self) -> None:
@@ -616,6 +626,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "tp_distance_pips",
             "hold_seconds",
             "risk_perc",
+            "r_multiple",
         ]
         header_line = ",".join(columns)
         if not self.log_path.exists():
@@ -659,6 +670,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                     "tp_distance_pips": row.get("tp_distance_pips", ""),
                     "hold_seconds": row.get("hold_seconds", ""),
                     "risk_perc": row.get("risk_perc", ""),
+                    "r_multiple": row.get("r_multiple", ""),
                 }
             )
     def save_summary(self) -> None:
