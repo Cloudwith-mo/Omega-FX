@@ -5,10 +5,12 @@ from __future__ import annotations
 import csv
 import json
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import MetaTrader5 as mt5  # type: ignore
+import yaml
 
 from core.constants import DEFAULT_STRATEGY_ID
 from core.execution_base import ExecutionBackend, ExecutionPosition, OrderSpec
@@ -69,8 +71,17 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "max_positions": 0,
             "daily_loss": 0,
             "invalid_stops": 0,
+            "cooldown_violated": 0,
+            "max_trades_per_hour_exceeded": 0,
+            "max_trades_per_day_exceeded": 0,
         }
         self.last_limit_reason: str | None = None
+
+        # HFT Safety Rails
+        self.safety_limits = self._load_safety_limits()
+        self.last_trade_time: dict[str, datetime] = {}  # symbol -> timestamp
+        self.trades_per_hour: dict[str, list[datetime]] = defaultdict(list)  # symbol -> timestamps
+        self.trades_today: dict[str, int] = defaultdict(int)  # strategy_id -> count
 
     # ------------------------------------------------------------------ API ---
 
@@ -177,6 +188,40 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         max_risk = self.per_trade_risk_fraction * self.daily_start_equity
         if risk_amount > max_risk:
             raise RuntimeError("Per-trade risk limit exceeded.")
+        
+        # HFT Safety Rails - check cooldown
+        timestamp = order.timestamp or datetime.now(timezone.utc)
+        last_time = self.last_trade_time.get(order.symbol)
+        min_seconds = self.safety_limits["min_seconds_between_trades_per_symbol"]
+        if last_time and (timestamp - last_time).total_seconds() < min_seconds:
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, risk_amount, "cooldown_violated"
+            )
+            return None
+        
+        # HFT Safety Rails - check per-hour limit
+        now = timestamp
+        recent_trades = [
+            t for t in self.trades_per_hour[order.symbol]
+            if (now - t).total_seconds() < 3600
+        ]
+        max_per_hour = self.safety_limits["max_trades_per_symbol_per_hour"]
+        if len(recent_trades) >= max_per_hour:
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, risk_amount, "max_trades_per_hour_exceeded"
+            )
+            return None
+        
+        # HFT Safety Rails - check daily limit per strategy
+        strategy_id = order.strategy_id or self.default_strategy_id
+        max_per_day = self.safety_limits["max_trades_per_strategy_per_day"]
+        if self.trades_today[strategy_id] >= max_per_day:
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, risk_amount, "max_trades_per_day_exceeded"
+            )
+            return None
+        
+        # Existing daily loss + max positions check
         limit_reason = self._limit_reason(risk_amount)
         if limit_reason:
             self._record_filtered_event(
@@ -223,6 +268,12 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         )
         self.positions[ticket] = position
         self._log_event(timestamp, "OPEN", position, entry_price, order.tag)
+        
+        # Update HFT safety rail tracking
+        self.last_trade_time[order.symbol] = timestamp
+        self.trades_per_hour[order.symbol].append(timestamp)
+        self.trades_today[strategy_id] += 1
+        
         return ticket
 
     def close_position(
@@ -271,11 +322,30 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         )
         self._log_event(event_time, "CLOSE", position, exit_price, reason)
 
-    # -------------------------------------------------------------- Internals ---
+    # ------------------------------------------------------------ Private ---
 
     def _ensure_ready(self) -> None:
         if not self.connected:
             raise RuntimeError("MT5 backend not connected.")
+
+    def _load_safety_limits(self) -> dict:
+        """Load HFT safety limits from config/execution_limits.yaml."""
+        config_path = Path("config/execution_limits.yaml")
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    return yaml.safe_load(f)["safety_rails"]
+            except Exception:
+                pass  # Fall through to defaults
+        
+        # Default fallback limits
+        return {
+            "max_trades_per_symbol_per_hour": 2,
+            "max_trades_per_strategy_per_day": 10,
+            "min_seconds_between_trades_per_symbol": 900,
+            "min_sl_pips": {"default": 10},
+            "min_hold_seconds": 600,
+        }
 
     def _limit_reason(self, risk_amount: float) -> str | None:
         if len(self.positions) >= self.max_positions:
@@ -479,18 +549,52 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         price: float,
         reason: str,
     ) -> None:
+        from core.risk_utils import price_to_pips
+        
+        # Calculate enriched metrics for CLOSE events
+        sl_pips = tp_pips = hold_secs = risk_perc = ""
+        
+        if event == "CLOSE":
+            # SL distance in pips
+            sl_dist = abs(position.entry_price - position.stop_loss) if position.stop_loss else 0
+            if sl_dist > 0:
+                sl_pips = f"{price_to_pips(sl_dist, position.symbol):.1f}"
+            
+            # TP distance in pips
+            if position.take_profit:
+                tp_dist = abs(position.take_profit - position.entry_price)
+                tp_pips = f"{price_to_pips(tp_dist, position.symbol):.1f}"
+            
+            # Hold duration in seconds
+            hold_secs = f"{(timestamp - position.opened_at).total_seconds():.0f}"
+            
+            # Risk percentage
+            if self.daily_start_equity > 0:
+                risk_perc = f"{(position.max_loss_amount / self.daily_start_equity) * 100:.3f}"
+        
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_exists = self.log_path.exists()
-        header = "timestamp,event,session_id,strategy_id,ticket,symbol,direction,volume,price,reason,signal_reason,equity,data_mode\\n"
-        with self.log_path.open("a", encoding="utf-8") as fh:
-            if not file_exists:
-                fh.write(header)
-            session_value = self.session_id or ""
-            signal_value = getattr(position, "signal_reason", "")
-            fh.write(
-                f"{timestamp.isoformat()},{event},{session_value},{position.strategy_id},{position.ticket},{position.symbol},"
-                f"{position.direction},{position.volume:.2f},{price:.5f},{reason},{signal_value},{self.current_equity:.2f},{self.data_mode}\n"
-            )
+        with self.log_path.open("a", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh)
+            # Write row with all fields including enriched ones
+            writer.writerow([
+                timestamp.isoformat(),
+                event,
+                self.session_id or "",
+                position.strategy_id,
+                position.ticket,
+                position.symbol,
+                position.direction,
+                f"{position.volume:.2f}",
+                f"{price:.5f}",
+                reason,
+                getattr(position, "signal_reason", ""),
+                f"{self.current_equity:.2f}",
+                self.data_mode,
+                sl_pips,
+                tp_pips,
+                hold_secs,
+                risk_perc,
+            ])
 
     def _ensure_log_header(self) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -508,6 +612,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "signal_reason",
             "equity",
             "data_mode",
+            "sl_distance_pips",
+            "tp_distance_pips",
+            "hold_seconds",
+            "risk_perc",
         ]
         header_line = ",".join(columns)
         if not self.log_path.exists():
@@ -533,23 +641,26 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                     or DEFAULT_STRATEGY_ID
                 )
                 writer.writerow(
-                    {
-                        "timestamp": row.get("timestamp", ""),
-                        "event": row.get("event", ""),
-                        "session_id": row.get("session_id", ""),
-                        "strategy_id": strategy_value,
-                        "ticket": row.get("ticket", ""),
-                        "symbol": row.get("symbol", ""),
-                        "direction": row.get("direction", ""),
-                        "volume": row.get("volume", ""),
-                        "price": row.get("price", ""),
-                        "reason": row.get("reason", ""),
-                        "signal_reason": row.get("signal_reason", ""),
-                        "equity": row.get("equity", ""),
-                        "data_mode": row.get("data_mode", "live"),
-                    }
-                )
-
+                {
+                    "timestamp": row.get("timestamp", ""),
+                    "event": row.get("event", ""),
+                    "session_id": row.get("session_id", ""),
+                    "strategy_id": strategy_value,
+                    "ticket": row.get("ticket", ""),
+                    "symbol": row.get("symbol", ""),
+                    "direction": row.get("direction", ""),
+                    "volume": row.get("volume", ""),
+                    "price": row.get("price", ""),
+                    "reason": row.get("reason", ""),
+                    "signal_reason": row.get("signal_reason", ""),
+                    "equity": row.get("equity", ""),
+                    "data_mode": row.get("data_mode", "live"),
+                    "sl_distance_pips": row.get("sl_distance_pips", ""),
+                    "tp_distance_pips": row.get("tp_distance_pips", ""),
+                    "hold_seconds": row.get("hold_seconds", ""),
+                    "risk_perc": row.get("risk_perc", ""),
+                }
+            )
     def save_summary(self) -> None:
         self.summary_path.parent.mkdir(parents=True, exist_ok=True)
         self.summary_path.write_text(json.dumps(self.summary(), indent=2))

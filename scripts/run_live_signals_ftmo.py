@@ -252,7 +252,9 @@ def evaluate_signals(
             if lot_size <= 0 or len(open_positions) >= max_open_positions:
                 continue
 
-            risk_amount = signal.stop_distance_pips * 10 * lot_size
+            # Calculate risk amount using symbol-aware pip value
+            symbol_meta = get_symbol_meta(symbol)
+            risk_amount = signal.stop_distance_pips * symbol_meta.pip_value_per_standard_lot * lot_size
             projected_loss = max(0.0, -todays_realized_pnl) + risk_amount
             internal_limit = (
                 risk_profile.daily_loss_limit_fraction * risk_state.start_of_day_equity

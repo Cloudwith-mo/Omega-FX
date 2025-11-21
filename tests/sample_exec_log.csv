@@ -1,0 +1,7 @@
+timestamp,event,session_id,strategy_id,ticket,symbol,direction,volume,price,reason,signal_reason,equity,data_mode,sl_distance_pips,tp_distance_pips,hold_seconds,risk_perc
+2025-11-19T20:43:00.028856+00:00,OPEN,test,omega_v2,1001,EURUSD,long,0.10,1.1000,v2_momentum,v2_momentum,100000.00,historical,,,,
+2025-11-19T23:13:00.028856+00:00,CLOSE,test,omega_v2,1001,EURUSD,long,0.10,1.1040,tp_hit,v2_momentum,100040.00,historical,25.0,50.0,9000,0.250
+2025-11-20T20:43:00.028856+00:00,OPEN,test,omega_v2,1002,USDJPY,long,0.10,150.00,v2_momentum,v2_momentum,100040.00,historical,,,,
+2025-11-21T03:43:00.028856+00:00,CLOSE,test,omega_v2,1002,USDJPY,long,0.10,150.50,tp_hit,v2_momentum,100085.00,historical,30.0,50.0,25200,0.280
+2025-11-21T08:43:00.028856+00:00,OPEN,test,omega_v2,1003,XAUUSD,long,0.05,2000.00,v2_momentum,v2_momentum,100085.00,historical,,,,
+2025-11-21T12:13:00.028856+00:00,CLOSE,test,omega_v2,1003,XAUUSD,long,0.05,2025.00,tp_hit,v2_momentum,100110.00,historical,150.0,250.0,12600,0.150

@@ -1,0 +1,35 @@
+# HFT Safety Rails Configuration
+# Conservative defaults to prevent high-frequency trading behavior
+
+safety_rails:
+  # Maximum trades per symbol per hour (prevents machine-gun trading)
+  max_trades_per_symbol_per_hour: 2
+  
+  # Maximum trades per strategy per day (prevents runaway strategies)
+  max_trades_per_strategy_per_day: 10
+  
+  # Minimum seconds between trades on same symbol (cooldown)
+  # 900 seconds = 15 minutes
+  min_seconds_between_trades_per_symbol: 900
+  
+  # Sanity thresholds for stop distances (in pips)
+  # These are minimums - trades with smaller stops will be flagged
+  min_sl_pips:
+    EURUSD: 10
+    GBPUSD: 10
+    USDJPY: 10
+    XAUUSD: 50  # Gold is more volatile, needs wider stops
+    GCF: 50     # Gold futures
+    default: 10  # For any unlisted symbols
+    
+  # Sanity thresholds for hold times (seconds)
+  # Trades closing faster than this will be flagged as potential scalping
+  min_hold_seconds: 600  # 10 minutes minimum
+
+# Reporting thresholds for sanity checker
+reporting:
+  # Alert if median hold time is below this (seconds)
+  alert_median_hold_below: 3600  # 1 hour
+  
+  # Alert if any SL distance is below min + this margin
+  sl_margin_pips: 5
