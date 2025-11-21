@@ -184,8 +184,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         take_profit = (
             float(order.take_profit) if order.take_profit is not None else None
         )
-            )
-        
+
         # Check Kill-Switch
         kill_switch_reason = self._check_kill_switch()
         if kill_switch_reason:
@@ -202,7 +201,15 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         max_risk = self.per_trade_risk_fraction * self.daily_start_equity
         if risk_amount > max_risk:
             raise RuntimeError("Per-trade risk limit exceeded.")
-        
+
+        # Existing daily loss + max positions check
+        limit_reason = self._limit_reason(risk_amount)
+        if limit_reason:
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, risk_amount, limit_reason
+            )
+            return None
+
         # HFT Safety Rails - check cooldown
         timestamp = order.timestamp or datetime.now(timezone.utc)
         last_time = self.last_trade_time.get(order.symbol)
@@ -212,7 +219,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 order, entry_price, stop_loss, take_profit, risk_amount, "cooldown_violated"
             )
             return None
-        
+
         # HFT Safety Rails - check per-hour limit
         now = timestamp
         recent_trades = [
@@ -225,7 +232,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 order, entry_price, stop_loss, take_profit, risk_amount, "max_trades_per_hour_exceeded"
             )
             return None
-        
+
         # HFT Safety Rails - check daily limit per strategy
         strategy_id = order.strategy_id or self.default_strategy_id
         max_per_day = self.safety_limits["max_trades_per_strategy_per_day"]
@@ -234,16 +241,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 order, entry_price, stop_loss, take_profit, risk_amount, "max_trades_per_day_exceeded"
             )
             return None
-        
-        # Existing daily loss + max positions check
-        limit_reason = self._limit_reason(risk_amount)
-        if limit_reason:
-            self._record_filtered_event(
-                order, entry_price, stop_loss, take_profit, risk_amount, limit_reason
-            )
-            return None
+
         ticket = f"MT5-{uuid.uuid4().hex[:10]}"
-        timestamp = order.timestamp or datetime.now(timezone.utc)
         if not self.dry_run:
             request = self._build_order_request(
                 order, entry_price, stop_loss, take_profit

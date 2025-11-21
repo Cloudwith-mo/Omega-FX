@@ -9,6 +9,9 @@ venv/
 outputs/
 results/*
 !results/
+!results/.gitignore
+!results/data_exports/
+!results/data_exports/*
 !results/eval_profile_ftmo.json
 !results/eval_profile_ftmo_summary.json
 !results/eval_profile_fundednext.json

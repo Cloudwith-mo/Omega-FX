@@ -59,13 +59,17 @@ def format_window_label(hours: float, env: str) -> str:
     return f"{label}_{env}"
 
 
+def _make_absolute(path: Path) -> Path:
+    return path if path.is_absolute() else (REPO_ROOT / path)
+
+
 def resolve_log_path(env: str, explicit: Path | None) -> Path:
     if explicit:
-        return explicit
-    env_path = Path(f"results/mt5_{env}_exec_log.csv")
+        return _make_absolute(explicit)
+    env_path = _make_absolute(Path(f"results/mt5_{env}_exec_log.csv"))
     if env_path.exists():
         return env_path
-    return DEFAULT_LOG_PATH
+    return _make_absolute(DEFAULT_LOG_PATH)
 
 
 def run_export_bundle(
@@ -76,6 +80,7 @@ def run_export_bundle(
     include_historical: bool = False,
     export_dir: Path = DEFAULT_EXPORT_DIR,
 ) -> tuple[Path, Path]:
+    export_dir = _make_absolute(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
 
     resolved_log = resolve_log_path(env, log_path)
@@ -103,10 +108,17 @@ def run_export_bundle(
     )
     summary_path.write_text(report, encoding="utf-8")
 
+    if csv_path.stat().st_size == 0:
+        raise ValueError(f"Empty export generated at {csv_path}")
+    if not report.strip():
+        raise ValueError("Behavior summary was empty")
+
+    csv_abs = csv_path.resolve()
+    summary_abs = summary_path.resolve()
     print("Export bundle completed:")
-    print(f"- CSV: {csv_path}")
-    print(f"- Behavior summary: {summary_path}")
-    return csv_path, summary_path
+    print(f"- CSV: {csv_abs}")
+    print(f"- Behavior summary: {summary_abs}")
+    return csv_abs, summary_abs
 
 
 def main() -> int:
