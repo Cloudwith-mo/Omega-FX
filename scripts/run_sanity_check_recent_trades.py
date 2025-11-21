@@ -30,6 +30,28 @@ def load_safety_limits():
         "min_hold_seconds": 600,
     }
 
+BEHAVIORAL_TARGETS = {
+    "OMEGA_M15_TF1": {
+        "trades_per_day": (2, 5),
+        "sl_pips": (20, 35),
+        "tp_pips": (35, 70),
+        "hold_minutes": (120, 360),
+    },
+    "OMEGA_MR_M15": {
+        "trades_per_day": (1, 4),
+        "sl_pips": (15, 25),
+        "tp_pips": (10, 40),
+        "hold_minutes": (30, 90),
+    },
+    # Default for unknown strategies
+    "DEFAULT": {
+        "trades_per_day": (0, 10),
+        "sl_pips": (5, 100),
+        "tp_pips": (5, 200),
+        "hold_minutes": (5, 1440),
+    }
+}
+
 
 def analyze_trades(log_path: Path, hours: int, limits: dict) -> dict:
     """Analyze recent trades and return metrics with violation flags."""
@@ -84,6 +106,63 @@ def analyze_trades(log_path: Path, hours: int, limits: dict) -> dict:
     }
 
 
+def analyze_strategy_behavior(df: pd.DataFrame, hours: int) -> dict:
+    """Analyze behavioral metrics per strategy against soft targets."""
+    metrics = {}
+    
+    # Group by strategy
+    if "strategy_id" not in df.columns:
+        # Fallback if strategy_id missing (older logs)
+        df["strategy_id"] = "UNKNOWN"
+        
+    for strategy_id in df["strategy_id"].unique():
+        strat_trades = df[df["strategy_id"] == strategy_id]
+        targets = BEHAVIORAL_TARGETS.get(strategy_id, BEHAVIORAL_TARGETS["DEFAULT"])
+        
+        # Metrics
+        days_analyzed = max(hours / 24.0, 1.0)
+        trades_per_day = len(strat_trades) / days_analyzed
+        
+        median_sl = strat_trades["sl_distance_pips"].replace("", float("nan")).astype(float).median()
+        median_tp = strat_trades["tp_distance_pips"].replace("", float("nan")).astype(float).median()
+        median_hold = strat_trades["hold_seconds"].replace("", float("nan")).astype(float).median()
+        median_hold_min = median_hold / 60 if pd.notna(median_hold) else float("nan")
+        
+        # R-multiples
+        r_multiples = strat_trades["r_multiple"].replace("", float("nan")).astype(float)
+        avg_r = r_multiples.mean()
+        
+        # Check soft targets
+        flags = []
+        t_min, t_max = targets["trades_per_day"]
+        if trades_per_day > t_max:
+            flags.append(f"High Freq: {trades_per_day:.1f}/day > {t_max}")
+        elif trades_per_day < t_min and trades_per_day > 0:
+             flags.append(f"Low Freq: {trades_per_day:.1f}/day < {t_min}")
+             
+        if pd.notna(median_sl):
+            s_min, s_max = targets["sl_pips"]
+            if median_sl < s_min: flags.append(f"Tight SL: {median_sl:.1f} < {s_min}")
+            if median_sl > s_max: flags.append(f"Wide SL: {median_sl:.1f} > {s_max}")
+            
+        if pd.notna(median_hold_min):
+            h_min, h_max = targets["hold_minutes"]
+            if median_hold_min < h_min: flags.append(f"Fast Churn: {median_hold_min:.0f}m < {h_min}m")
+            if median_hold_min > h_max: flags.append(f"Long Hold: {median_hold_min:.0f}m > {h_max}m")
+
+        metrics[strategy_id] = {
+            "trades": len(strat_trades),
+            "trades_per_day": trades_per_day,
+            "median_sl": median_sl,
+            "median_tp": median_tp,
+            "median_hold_min": median_hold_min,
+            "avg_r": avg_r,
+            "flags": flags
+        }
+        
+    return metrics
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sanity check recent trades for HFT-like behavior"
@@ -117,6 +196,8 @@ def main():
     
     print(f"\nTrades analyzed: {result['trades_analyzed']}\n")
     
+    # Safety Rail Checks
+    print("--- SAFETY RAILS (HARD LIMITS) ---")
     has_violations = False
     for symbol, metrics in result["per_symbol"].items():
         status = "❌" if metrics["violations"] else "✅"
@@ -141,6 +222,29 @@ def main():
                 print(f"    - {v}")
         print()
     
+    # Behavioral Checks
+    print("--- BEHAVIORAL TARGETS (SOFT LIMITS) ---")
+    df = pd.read_csv(log_path)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=args.hours)
+    recent_closes = df[(df["timestamp"] >= cutoff) & (df["event"] == "CLOSE")].copy()
+    
+    if not recent_closes.empty:
+        behavior_metrics = analyze_strategy_behavior(recent_closes, args.hours)
+        for strategy, m in behavior_metrics.items():
+            status = "⚠️" if m["flags"] else "OK"
+            print(f"[{status}] {strategy}:")
+            print(f"  Trades/Day: {m['trades_per_day']:.1f}")
+            print(f"  Med SL/TP: {m['median_sl']:.1f} / {m['median_tp']:.1f} pips")
+            print(f"  Med Hold: {m['median_hold_min']:.0f} min")
+            print(f"  Avg R: {m['avg_r']:.2f}R")
+            if m["flags"]:
+                for f in m["flags"]:
+                    print(f"    - {f}")
+            print()
+    else:
+        print("No completed trades to analyze behavior.")
+
     if has_violations:
         print("=" * 60)
         print("❌ SANITY CHECK FAILED: Violations detected")
@@ -148,7 +252,7 @@ def main():
         return 1
     else:
         print("=" * 60)
-        print("✅ SANITY CHECK PASSED")
+        print("✅ SANITY CHECK PASSED (Safety Rails)")
         print("=" * 60)
         return 0
 

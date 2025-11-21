@@ -12,6 +12,7 @@ from pathlib import Path
 import MetaTrader5 as mt5  # type: ignore
 import yaml
 
+from config.settings import resolve_firm_profile
 from core.constants import DEFAULT_STRATEGY_ID
 from core.execution_base import ExecutionBackend, ExecutionPosition, OrderSpec
 from core.position_sizing import get_symbol_meta
@@ -35,6 +36,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         session_id: str | None = None,
         risk_env: str | None = None,
         risk_tier: str | None = None,
+        risk_profile: str | None = None,
         strategy_id: str | None = None,
         active_strategy_ids: list[str] | None = None,
     ) -> None:
@@ -50,6 +52,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.session_id = session_id or ""
         self.risk_env = (risk_env or "").lower()
         self.risk_tier = (risk_tier or "").lower()
+        self.firm_profile = resolve_firm_profile(risk_profile)
         self.default_strategy_id = strategy_id or DEFAULT_STRATEGY_ID
         base_ids = [self.default_strategy_id]
         if active_strategy_ids:
@@ -61,6 +64,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.initial_equity = 0.0
         self.starting_equity = 0.0
         self.ending_equity = 0.0
+        self.high_water_mark = 0.0
         self.starting_balance = 0.0
         self.ending_balance = 0.0
         self.daily_start_equity = 0.0
@@ -74,6 +78,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "cooldown_violated": 0,
             "max_trades_per_hour_exceeded": 0,
             "max_trades_per_day_exceeded": 0,
+            "kill_switch_daily": 0,
+            "kill_switch_global": 0,
         }
         self.last_limit_reason: str | None = None
 
@@ -119,6 +125,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.initial_equity = start_equity
         self.starting_equity = start_equity
         self.current_equity = start_equity
+        self.high_water_mark = start_equity
         self.ending_equity = start_equity
         start_balance = float(getattr(info, "balance", None) or start_equity)
         self.starting_balance = start_balance
@@ -177,10 +184,17 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         take_profit = (
             float(order.take_profit) if order.take_profit is not None else None
         )
-        if not self.dry_run:
-            entry_price, stop_loss, take_profit = self._realign_live_prices(
-                order, historical_entry, stop_loss, take_profit
             )
+        
+        # Check Kill-Switch
+        kill_switch_reason = self._check_kill_switch()
+        if kill_switch_reason:
+            # Log filtered event for kill-switch
+            self._record_filtered_event(
+                order, entry_price, stop_loss, take_profit, 0.0, kill_switch_reason
+            )
+            return None
+
         risk_amount = self._risk_amount(
             order.symbol, entry_price, stop_loss, order.volume
         )
@@ -301,6 +315,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 )
         pnl = self._pnl_for_position(position, exit_price)
         self.current_equity += pnl
+        self.high_water_mark = max(self.high_water_mark, self.current_equity)
         if pnl < 0:
             self.daily_realized += pnl
         event_time = timestamp or datetime.now(timezone.utc)
@@ -356,6 +371,26 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         projected = worst_case_loss + risk_amount
         if projected > (self.daily_loss_fraction * self.daily_start_equity):
             return "daily_loss"
+        return None
+
+    def _check_kill_switch(self) -> str | None:
+        """Check if any kill-switch is active."""
+        # Daily Loss Kill-Switch
+        if self.daily_start_equity > 0:
+            current_daily_loss = self.daily_start_equity - self.current_equity
+            max_daily_loss = self.firm_profile.internal_max_daily_loss_fraction * self.daily_start_equity
+            if current_daily_loss >= max_daily_loss:
+                self.filter_counters["kill_switch_daily"] += 1
+                return "kill_switch_daily"
+
+        # Global Drawdown Kill-Switch
+        if self.high_water_mark > 0:
+            current_dd = self.high_water_mark - self.current_equity
+            max_total_dd = self.firm_profile.internal_max_trailing_dd_fraction * self.high_water_mark
+            if current_dd >= max_total_dd:
+                self.filter_counters["kill_switch_global"] += 1
+                return "kill_switch_global"
+        
         return None
 
     def _realign_live_prices(
@@ -581,6 +616,24 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             if position.max_loss_amount > 0:
                 r_multiple = f"{pnl_dollars / position.max_loss_amount:.2f}"
         
+        # Prop Metrics
+        daily_loss_pct = 0.0
+        if self.daily_start_equity > 0:
+            daily_loss_pct = (self.daily_start_equity - self.current_equity) / self.daily_start_equity
+        
+        total_dd_pct = 0.0
+        if self.high_water_mark > 0:
+            total_dd_pct = (self.high_water_mark - self.current_equity) / self.high_water_mark
+        
+        eval_progress_pct = 0.0
+        target_profit = self.initial_equity * self.firm_profile.prop_max_total_loss_fraction  # Using max loss as proxy if target not in profile, but better to use settings
+        # Actually, let's use the profit target from settings if available, else default 10%
+        target_fraction = getattr(self.firm_profile, "profit_target_fraction", 0.10)
+        if self.initial_equity > 0:
+            eval_progress_pct = (self.current_equity - self.initial_equity) / (self.initial_equity * target_fraction)
+
+        trades_today_count = sum(self.trades_today.values())
+
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8", newline="") as fh:
             writer = csv.writer(fh)
@@ -604,6 +657,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                 hold_secs,
                 risk_perc,
                 r_multiple,
+                f"{daily_loss_pct:.4f}",
+                f"{total_dd_pct:.4f}",
+                f"{eval_progress_pct:.4f}",
+                trades_today_count,
             ])
 
     def _ensure_log_header(self) -> None:
@@ -627,6 +684,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "hold_seconds",
             "risk_perc",
             "r_multiple",
+            "daily_loss_pct",
+            "total_dd_pct",
+            "eval_progress_pct",
+            "trades_today_count",
         ]
         header_line = ",".join(columns)
         if not self.log_path.exists():
@@ -671,6 +732,10 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
                     "hold_seconds": row.get("hold_seconds", ""),
                     "risk_perc": row.get("risk_perc", ""),
                     "r_multiple": row.get("r_multiple", ""),
+                    "daily_loss_pct": row.get("daily_loss_pct", ""),
+                    "total_dd_pct": row.get("total_dd_pct", ""),
+                    "eval_progress_pct": row.get("eval_progress_pct", ""),
+                    "trades_today_count": row.get("trades_today_count", ""),
                 }
             )
     def save_summary(self) -> None:
@@ -698,6 +763,13 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         for trade in self.trade_records:
             label = str(trade.get("signal_reason") or "unknown")
             signal_counts[label] = signal_counts.get(label, 0) + 1
+        
+        # Calculate eval progress
+        eval_progress_pct = 0.0
+        target_fraction = getattr(self.firm_profile, "profit_target_fraction", 0.10)
+        if self.initial_equity > 0:
+            eval_progress_pct = (self.current_equity - self.initial_equity) / (self.initial_equity * target_fraction)
+
         return {
             "dry_run": self.dry_run,
             "initial_equity": self.initial_equity,
@@ -720,6 +792,8 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "strategy_id": self.default_strategy_id,
             "filtered_daily_loss": self.filter_counters.get("daily_loss", 0),
             "filtered_invalid_stops": self.filter_counters.get("invalid_stops", 0),
+            "filtered_kill_switch_daily": self.filter_counters.get("kill_switch_daily", 0),
+            "filtered_kill_switch_global": self.filter_counters.get("kill_switch_global", 0),
             "signal_reason_counts": signal_counts,
             "session_pnl": (self.ending_equity or self.current_equity)
             - (self.starting_equity or self.initial_equity),
@@ -727,6 +801,12 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             - self.starting_balance,
             "per_strategy": strategy_stats,
             "active_strategies": sorted(self.active_strategy_ids),
+            "prop_metrics": {
+                "daily_loss_pct": (self.daily_start_equity - self.current_equity) / self.daily_start_equity if self.daily_start_equity > 0 else 0.0,
+                "total_dd_pct": (self.high_water_mark - self.current_equity) / self.high_water_mark if self.high_water_mark > 0 else 0.0,
+                "eval_progress_pct": eval_progress_pct,
+                "trades_today_count": sum(self.trades_today.values()),
+            }
         }
 
     def _compute_strategy_stats(self) -> dict[str, dict]:

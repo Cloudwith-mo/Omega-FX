@@ -165,6 +165,13 @@ FIRM_PROFILES = {
         prop_max_daily_loss_fraction=0.03,
         prop_max_total_loss_fraction=0.06,
     ),
+    "PROP_EVAL": FirmProfile(
+        name="PROP_EVAL",
+        internal_max_daily_loss_fraction=0.025,  # Stop slightly before hard limit
+        internal_max_trailing_dd_fraction=0.07,  # Stop slightly before hard limit
+        prop_max_daily_loss_fraction=0.03,
+        prop_max_total_loss_fraction=0.08,
+    ),
 }
 
 DEFAULT_FIRM_PROFILE = "TIGHT_PROP"
