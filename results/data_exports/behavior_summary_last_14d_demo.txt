@@ -1,0 +1,36 @@
+# DEMO Execution Report (336h)
+
+- Window start (UTC): 2025-11-07T23:35:21.397889+00:00
+- Window end   (UTC): 2025-11-21T23:35:21.397889+00:00
+- Start equity: 10000.00
+- End equity: 10100.00
+- PnL: 100.00
+- PnL %: 1.00%
+- Start balance: 10000.00
+- End balance: 10100.00
+- Balance PnL: 100.00 (1.00%)
+- Closed trades: 2
+- Win rate: 100.0%
+- Risk tier: unknown
+- Environment: unknown
+- Session id: session_2
+- Strategy id: strategy_A
+
+## Filter Counts
+- filtered_max_positions: 0
+- filtered_daily_loss: 0
+- filtered_invalid_stops: 0
+
+## Strategy breakdown
+
+| Strategy | Trades | Wins | Losses | PnL | Win % | Avg PnL |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| strategy_A | 1 | 1 | 0 | 500.00 | 100.00% | 500.00 |
+| strategy_B | 1 | 1 | 0 | 500.00 | 100.00% | 500.00 |
+
+## Last 10 trades in window
+
+| Timestamp | Session | Strategy | Symbol | Direction | Volume | PnL | Signal Reason |
+| --- | --- | --- | --- | --- | ---: | ---: | --- |
+| 2025-11-20T11:00:00+00:00 | session_1 | strategy_A | EURUSD | long | 1.00 | 500.00 | signal_1 |
+| 2025-11-21T11:00:00+00:00 | session_2 | strategy_B | GBPUSD | short | 1.00 | 500.00 | signal_2 |

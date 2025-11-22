@@ -103,56 +103,68 @@ def analyze_logs(
     open_positions: dict[str, dict] = {}
     completed_trades: list[dict] = []
     
+    # Sort rows by timestamp to ensure correct order
+    rows = []
     with log_path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
+        rows = list(reader)
+    
+    rows.sort(key=lambda x: x["timestamp"])
+    
+    # Analyze equity curve
+    equities = [_safe_float(r.get("equity")) for r in rows if _safe_float(r.get("equity")) is not None]
+    equity_stats = {}
+    if equities:
+        start_equity = equities[0]
+        end_equity = equities[-1]
+        min_equity = min(equities)
+        max_equity = max(equities)
+        max_drawdown = max_equity - min_equity
+        max_drawdown_pct = (max_drawdown / max_equity) if max_equity > 0 else 0.0
+        session_pnl = end_equity - start_equity
+        session_pnl_pct = (session_pnl / start_equity) if start_equity > 0 else 0.0
         
-        for row in reader:
-            timestamp = _parse_timestamp(row["timestamp"])
-            ticket = row["ticket"]
-            event = row.get("event", "").strip()
-            
-            # Filter by data mode
-            row_mode = (row.get("data_mode") or "live").strip().lower()
-            if not include_historical and row_mode != "live":
-                continue
-            
-            if event == "OPEN":
-                open_positions[ticket] = {
-                    "ticket": ticket,
-                    "symbol": row.get("symbol", ""),
-                    "direction": row.get("direction", ""),
-                    "volume": _safe_float(row.get("volume")),
-                    "entry_price": _safe_float(row.get("price")),
-                    "entry_time": timestamp,
-                    "strategy_id": row.get("strategy_id", "").strip() or "unknown",
-                    "session_id": row.get("session_id", "").strip(),
-                    "signal_reason": row.get("signal_reason", "").strip(),
-                }
-            
-            elif event == "CLOSE":
-                if ticket in open_positions:
-                    entry = open_positions.pop(ticket)
-                else:
-                    # Fallback: count CLOSE-only rows when OPEN is outside the window
-                    entry = {
-                        "ticket": ticket,
-                        "symbol": row.get("symbol", ""),
-                        "direction": row.get("direction", ""),
-                        "volume": _safe_float(row.get("volume")),
-                        "entry_price": _safe_float(row.get("price")),
-                        "entry_time": timestamp,
-                        "strategy_id": row.get("strategy_id", "").strip() or "unknown",
-                        "session_id": row.get("session_id", "").strip(),
-                        "signal_reason": row.get("signal_reason", "").strip(),
-                    }
+        equity_stats = {
+            "start_equity": start_equity,
+            "end_equity": end_equity,
+            "min_equity": min_equity,
+            "max_equity": max_equity,
+            "max_drawdown": max_drawdown,
+            "max_drawdown_pct": max_drawdown_pct,
+            "session_pnl": session_pnl,
+            "session_pnl_pct": session_pnl_pct,
+        }
 
-                exit_price = _safe_float(row.get("price"))
-                pnl = _safe_float(row.get("pnl"))
-
-                hold_seconds = None
-                pips_moved = None
-                r_multiple = None
-
+    for row in rows:
+        timestamp = _parse_timestamp(row["timestamp"])
+        ticket = row["ticket"]
+        event = row.get("event", "").strip()
+        
+        # Filter by data mode
+        row_mode = (row.get("data_mode") or "live").strip().lower()
+        if not include_historical and row_mode != "live":
+            continue
+        
+        if event == "OPEN":
+            open_positions[ticket] = {
+                "ticket": ticket,
+                "symbol": row.get("symbol", ""),
+                "direction": row.get("direction", ""),
+                "volume": _safe_float(row.get("volume")),
+                "entry_price": _safe_float(row.get("price")),
+                "entry_time": timestamp,
+                "strategy_id": row.get("strategy_id", "").strip() or "unknown",
+                "session_id": row.get("session_id", "").strip(),
+                "signal_reason": row.get("signal_reason", "").strip(),
+            }
+        
+        elif event == "CLOSE":
+            entry = open_positions.pop(ticket, None)
+            exit_price = _safe_float(row.get("price"))
+            pnl = _safe_float(row.get("pnl"))
+            
+            if entry:
+                # Matched trade
                 if exit_price is not None and entry["entry_price"] is not None:
                     hold_seconds = max(0.0, (timestamp - entry["entry_time"]).total_seconds())
 
@@ -160,12 +172,22 @@ def analyze_logs(
                     meta = get_symbol_meta(symbol)
                     price_diff = abs(exit_price - entry["entry_price"])
                     pips_moved = price_diff / meta.pip_size
+                    
+                    # Calculate PnL if missing
+                    if pnl is None:
+                        direction_mult = 1.0 if entry["direction"].lower() == "long" else -1.0
+                        raw_diff = (exit_price - entry["entry_price"]) * direction_mult
+                        pnl = (raw_diff / meta.pip_size) * meta.pip_value_per_standard_lot * (entry["volume"] or 0.0)
 
+                    # Estimate R-multiple (PnL / risk)
                     typical_sl_pips = 20.0
+                    r_multiple = None
+>>>>>>> af86c32 (Enhance Alpha Cockpit with HUD visuals, safety rails, strategy widgets, and quality metrics)
                     if pnl is not None and abs(pnl) > 0.01:
                         risk_estimate = typical_sl_pips * meta.pip_value_per_standard_lot * (entry["volume"] or 1.0)
                         if risk_estimate > 0:
                             r_multiple = pnl / risk_estimate
+<<<<<<< HEAD
 
                 completed_trades.append({
                     **entry,
@@ -178,11 +200,30 @@ def analyze_logs(
                     "is_win": (pnl or 0.0) > 0,
                 })
     
+=======
+                    
+                    completed_trades.append({
+                        **entry,
+                        "exit_price": exit_price,
+                        "exit_time": timestamp,
+                        "pnl": pnl or 0.0,
+                        "hold_seconds": hold_seconds,
+                        "pips_moved": pips_moved,
+                        "r_multiple": r_multiple,
+                        "is_win": (pnl or 0.0) > 0,
+                    })
+            else:
+                # Orphan close (missing open)
+                pass
+
+
+
     # Aggregate per strategy
     per_strategy = _aggregate_by_strategy(completed_trades)
     
     # Compute overall stats
     overall = _compute_overall_stats(completed_trades)
+    overall["equity_stats"] = equity_stats
     
     return {
         "trades": completed_trades,
@@ -315,6 +356,21 @@ def generate_markdown_report(
         f"- **Avg P&L**: ${overall.get('avg_pnl', 0):.2f}",
         "",
     ]
+    
+    # Equity Analysis
+    equity_stats = overall.get("equity_stats", {})
+    if equity_stats:
+        lines.extend([
+            "## Equity Analysis (Account Level)",
+            "",
+            f"- **Start Equity**: ${equity_stats['start_equity']:,.2f}",
+            f"- **End Equity**: ${equity_stats['end_equity']:,.2f}",
+            f"- **Session P&L**: ${equity_stats['session_pnl']:,.2f} ({equity_stats['session_pnl_pct']:.2%})",
+            f"- **Max Drawdown**: ${equity_stats['max_drawdown']:,.2f} ({equity_stats['max_drawdown_pct']:.2%})",
+            f"- **Min Equity**: ${equity_stats['min_equity']:,.2f}",
+            f"- **Max Equity**: ${equity_stats['max_equity']:,.2f}",
+            "",
+        ])
     
     # Per-strategy breakdown
     lines.append("## Per-Strategy Metrics")

@@ -1,0 +1,5 @@
+timestamp,ticket,event,price,volume,equity,session_id,data_mode,strategy_id,symbol,direction,signal_reason,pnl
+2025-11-20T10:00:00,1001,OPEN,1.0500,1.0,10000.0,session_1,live,strategy_A,EURUSD,long,signal_1,
+2025-11-20T11:00:00,1001,CLOSE,1.0550,1.0,10050.0,session_1,live,strategy_A,EURUSD,long,signal_1,50.0
+2025-11-21T10:00:00,1002,OPEN,1.0600,1.0,10050.0,session_2,live,strategy_B,GBPUSD,short,signal_2,
+2025-11-21T11:00:00,1002,CLOSE,1.0550,1.0,10100.0,session_2,live,strategy_B,GBPUSD,short,signal_2,50.0
