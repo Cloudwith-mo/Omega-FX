@@ -129,41 +129,54 @@ def analyze_logs(
                     "signal_reason": row.get("signal_reason", "").strip(),
                 }
             
-            elif event == "CLOSE" and ticket in open_positions:
-                entry = open_positions.pop(ticket)
+            elif event == "CLOSE":
+                if ticket in open_positions:
+                    entry = open_positions.pop(ticket)
+                else:
+                    # Fallback: count CLOSE-only rows when OPEN is outside the window
+                    entry = {
+                        "ticket": ticket,
+                        "symbol": row.get("symbol", ""),
+                        "direction": row.get("direction", ""),
+                        "volume": _safe_float(row.get("volume")),
+                        "entry_price": _safe_float(row.get("price")),
+                        "entry_time": timestamp,
+                        "strategy_id": row.get("strategy_id", "").strip() or "unknown",
+                        "session_id": row.get("session_id", "").strip(),
+                        "signal_reason": row.get("signal_reason", "").strip(),
+                    }
+
                 exit_price = _safe_float(row.get("price"))
                 pnl = _safe_float(row.get("pnl"))
-                
+
+                hold_seconds = None
+                pips_moved = None
+                r_multiple = None
+
                 if exit_price is not None and entry["entry_price"] is not None:
-                    # Compute hold time
-                    hold_seconds = (timestamp - entry["entry_time"]).total_seconds()
-                    
-                    # Compute SL/TP in pips (estimate from price movement)
+                    hold_seconds = max(0.0, (timestamp - entry["entry_time"]).total_seconds())
+
                     symbol = entry["symbol"]
                     meta = get_symbol_meta(symbol)
                     price_diff = abs(exit_price - entry["entry_price"])
                     pips_moved = price_diff / meta.pip_size
-                    
-                    # Estimate R-multiple (PnL / risk)
-                    # We don't have exact SL in logs, so estimate from typical risk
-                    typical_sl_pips = 20.0  # Default assumption
-                    r_multiple = None
+
+                    typical_sl_pips = 20.0
                     if pnl is not None and abs(pnl) > 0.01:
-                        # Rough estimate: assume SL was ~20 pips
                         risk_estimate = typical_sl_pips * meta.pip_value_per_standard_lot * (entry["volume"] or 1.0)
                         if risk_estimate > 0:
                             r_multiple = pnl / risk_estimate
-                    
-                    completed_trades.append({
-                        **entry,
-                        "exit_price": exit_price,
-                        "exit_time": timestamp,
-                        "pnl": pnl or 0.0,
-                        "hold_seconds": hold_seconds,
-                        "pips_moved": pips_moved,
-                        "r_multiple": r_multiple,
-                        "is_win": (pnl or 0.0) > 0,
-                    })
+
+                completed_trades.append({
+                    **entry,
+                    "exit_price": exit_price,
+                    "exit_time": timestamp,
+                    "pnl": pnl or 0.0,
+                    "hold_seconds": hold_seconds,
+                    "pips_moved": pips_moved,
+                    "r_multiple": r_multiple,
+                    "is_win": (pnl or 0.0) > 0,
+                })
     
     # Aggregate per strategy
     per_strategy = _aggregate_by_strategy(completed_trades)
