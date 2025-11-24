@@ -60,3 +60,8 @@ prop_eval_conservative:
     GCF: 60
     default: 15
   min_hold_seconds: 1800 # 30 mins
+
+# Global risk caps per strategy
+risk_caps:
+  max_daily_loss_fraction: 0.03
+  max_total_drawdown_fraction: 0.08
