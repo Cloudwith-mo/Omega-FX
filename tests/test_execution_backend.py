@@ -7,11 +7,11 @@ import pytest
 
 from types import SimpleNamespace
 
+from adapters import SimulatedExecutionBackend
+from adapters.mt5_backend import Mt5DemoExecutionBackend
 from core.execution_accounts import load_account_profiles, resolve_account_config
 from core.execution_base import OrderSpec
 from core.position_sizing import calculate_position_size
-from execution_backends.simulated import SimulatedExecutionBackend
-from execution_backends.mt5_demo import Mt5DemoExecutionBackend
 from scripts.run_exec_mt5_smoketest import perform_smoketest
 
 
@@ -109,7 +109,7 @@ class DummyMT5:
 
 def test_mt5_backend_risk_blocks(monkeypatch, tmp_path: Path) -> None:
     dummy = DummyMT5()
-    monkeypatch.setattr("execution_backends.mt5_demo.mt5", dummy)
+    monkeypatch.setattr("adapters.mt5_backend.mt5", dummy)
     backend = Mt5DemoExecutionBackend(
         login=1,
         password="x",
@@ -133,7 +133,7 @@ def test_mt5_backend_risk_blocks(monkeypatch, tmp_path: Path) -> None:
 
 def test_mt5_backend_daily_loss(monkeypatch, tmp_path: Path) -> None:
     dummy = DummyMT5()
-    monkeypatch.setattr("execution_backends.mt5_demo.mt5", dummy)
+    monkeypatch.setattr("adapters.mt5_backend.mt5", dummy)
     backend = Mt5DemoExecutionBackend(
         login=1,
         password="x",

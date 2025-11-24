@@ -1,0 +1,17 @@
+defaults:
+  max_trades_per_day: 8       # placeholder; adjust per bot
+  min_hold_seconds: 60        # placeholder; adjust per bot
+
+bots:
+  demo_trend_only:
+    max_trades_per_day: 8
+    min_hold_seconds: 60
+  demo_mr_only:
+    max_trades_per_day: 8
+    min_hold_seconds: 60
+  demo_session_only:
+    max_trades_per_day: 8
+    min_hold_seconds: 60
+  demo_trend_mr_london:
+    max_trades_per_day: 12
+    min_hold_seconds: 60

@@ -112,6 +112,12 @@ SYMBOLS = [
         m15_path="data/USDJPY_M15.csv",
         h4_path="data/USDJPY_H4.csv",
     ),
+    SymbolConfig(
+        name="XAUUSD",
+        h1_path="data/XAUUSD_H1.csv",
+        m15_path="data/XAUUSD_M15.csv",
+        h4_path="data/XAUUSD_H4.csv",
+    ),
 ]
 @dataclass(frozen=True)
 class FirmProfile:
@@ -157,6 +163,13 @@ FIRM_PROFILES = {
         internal_max_trailing_dd_fraction=0.05,
         prop_max_daily_loss_fraction=0.03,
         prop_max_total_loss_fraction=0.06,
+    ),
+    "PROP_EVAL": FirmProfile(
+        name="PROP_EVAL",
+        internal_max_daily_loss_fraction=0.025,
+        internal_max_trailing_dd_fraction=0.07,
+        prop_max_daily_loss_fraction=0.05,
+        prop_max_total_loss_fraction=0.10,
     ),
 }
 

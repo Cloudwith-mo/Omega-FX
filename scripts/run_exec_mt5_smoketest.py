@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.execution_accounts import available_profile_names, resolve_account_config  # noqa: E402
 from core.execution_base import OrderSpec  # noqa: E402
 from core.position_sizing import calculate_position_size, get_symbol_meta  # noqa: E402
-from execution_backends.mt5_demo import Mt5DemoExecutionBackend  # noqa: E402
+from adapters.mt5_backend import Mt5DemoExecutionBackend  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

@@ -55,7 +55,7 @@ python scripts/run_exec_mt5_demo_from_signals.py \
 ```
 
 - Reuses the FTMO M15 preset to generate historical signals.
-- Pipes them through `execution_backends.mt5_demo.Mt5DemoExecutionBackend`.
+- Pipes them through `adapters.mt5_backend.Mt5DemoExecutionBackend`.
 - Dry-run mode logs everything to `results/mt5_demo_exec_log.csv` and `results/mt5_demo_exec_summary.json` **without** sending orders to MT5.
 - Swap `--account_profile FTMO_TRIAL` when you want to shadow the FTMO trial feed.
 

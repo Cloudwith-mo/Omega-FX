@@ -1,0 +1,23 @@
+bot_id: demo_trend_mr_london
+mt5_account: DEMO_MULTI
+env: demo
+firm_profile: PROP_EVAL
+risk_tier: conservative
+symbols:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+  - XAUUSD
+strategies:
+  - id: OMEGA_M15_TF1
+    enabled: true
+    risk_scale: 0.5
+  - id: OMEGA_MR_M15
+    enabled: true
+    risk_scale: 0.3
+  - id: OMEGA_SESSION_LDN_M15
+    enabled: true
+    risk_scale: 0.2
+alert_mode: telegram
+account_equity: 100000
+description: "Demo bot combining trend, mean-reversion, and London momentum slices."
