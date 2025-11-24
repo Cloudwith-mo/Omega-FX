@@ -53,6 +53,7 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         self.risk_env = (risk_env or "").lower()
         self.risk_tier = (risk_tier or "").lower()
         self.firm_profile = resolve_firm_profile(risk_profile)
+        self.risk_caps = self._load_risk_caps()
         self.default_strategy_id = strategy_id or DEFAULT_STRATEGY_ID
         base_ids = [self.default_strategy_id]
         if active_strategy_ids:
@@ -361,6 +362,21 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
             "min_hold_seconds": 600,
         }
 
+    def _load_risk_caps(self) -> dict:
+        """Load global risk caps from config/execution_limits.yaml."""
+        config_path = Path('config/execution_limits.yaml')
+        defaults = {
+            'max_daily_loss_fraction': 0.03,
+            'max_total_drawdown_fraction': 0.08,
+        }
+        if config_path.exists():
+            try:
+                data = yaml.safe_load(config_path)
+                return data.get('risk_caps', defaults) or defaults
+            except Exception:
+                return defaults
+        return defaults
+
     def _limit_reason(self, risk_amount: float) -> str | None:
         if len(self.positions) >= self.max_positions:
             return "max_positions"
@@ -370,6 +386,19 @@ class Mt5DemoExecutionBackend(ExecutionBackend):
         projected = worst_case_loss + risk_amount
         if projected > (self.daily_loss_fraction * self.daily_start_equity):
             return "daily_loss"
+
+        if self.daily_start_equity > 0:
+            projected_daily_loss = (self.daily_start_equity - self.current_equity) + risk_amount
+            daily_loss_frac = projected_daily_loss / self.daily_start_equity
+            if daily_loss_frac >= self.risk_caps.get("max_daily_loss_fraction", 1.0):
+                return "risk_cap_daily_loss"
+
+        hw = self.high_water_mark or self.daily_start_equity or self.current_equity
+        if hw > 0:
+            projected_equity = self.current_equity - risk_amount
+            dd_frac = (hw - projected_equity) / hw
+            if dd_frac >= self.risk_caps.get("max_total_drawdown_fraction", 1.0):
+                return "risk_cap_total_dd"
         return None
 
     def _check_kill_switch(self) -> str | None:

@@ -193,6 +193,8 @@ def build_status_payload(
         "balance_pnl": balance_pnl,
         "balance_pnl_pct": balance_pnl_pct,
         "tier": summary.get("risk_tier") or read_latest_risk_tier(summary_path),
+        "bot_id": summary.get("bot_id", ""),
+        "mt5_account_alias": summary.get("account_alias", summary.get("mt5_account_alias", "")),
         "env": summary.get("risk_env") or read_latest_risk_env(summary_path),
         "session_id": summary.get("session_id", "unknown"),
         "strategy_id": primary_strategy_id,
