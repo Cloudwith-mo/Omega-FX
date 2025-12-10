@@ -16,9 +16,17 @@ class SymbolMeta:
 
 
 DEFAULT_SYMBOL_META = {
-    "EURUSD": SymbolMeta("EURUSD", pip_value_per_standard_lot=10.0, pip_size=0.0001),
-    "GBPUSD": SymbolMeta("GBPUSD", pip_value_per_standard_lot=10.0, pip_size=0.0001),
+    "EURUSD": SymbolMeta(
+        "EURUSD", pip_value_per_standard_lot=10.0, pip_size=0.0001
+    ),
+    "GBPUSD": SymbolMeta(
+        "GBPUSD", pip_value_per_standard_lot=10.0, pip_size=0.0001
+    ),
     "USDJPY": SymbolMeta("USDJPY", pip_value_per_standard_lot=9.0, pip_size=0.01),
+    "GC=F": SymbolMeta("GC=F", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "GCF": SymbolMeta("GCF", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "GCF_1H": SymbolMeta("GCF_1H", pip_value_per_standard_lot=1.0, pip_size=0.01),
+    "XAUUSD": SymbolMeta("XAUUSD", pip_value_per_standard_lot=1.0, pip_size=0.01),
 }
 
 
@@ -50,7 +58,9 @@ def calculate_position_size(
         raise ValueError("Stop distance must be positive.")
 
     risk_amount = equity * risk_fraction
-    cost_per_standard_lot = pip_distance * meta.pip_value_per_standard_lot
+    cost_per_standard_lot = (
+        pip_distance * meta.pip_value_per_standard_lot
+    )
     if cost_per_standard_lot <= 0:
         raise ValueError("Cost per lot must be positive.")
 

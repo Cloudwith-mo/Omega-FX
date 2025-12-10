@@ -1,9 +1,20 @@
 # Multi-Account Demo Runbook
 
 ## Prereqs
-- Four MT5 demo terminals installed (one per bot). Map each terminal path and account into `config/mt5_accounts.yaml` under `DEMO_TREND`, `DEMO_MR`, `DEMO_SESSION`, and `DEMO_MULTI` (placeholders are present—replace logins/passwords/paths locally).
-- Activate the project venv (`source .venv/bin/activate`) and ensure optional deps are installed (`fastapi`, `uvicorn`, `requests`) if you want API/alert adapters.
+- Four MT5 demo terminals installed (one per bot). Map each terminal path/account into `config/mt5_accounts.yaml` under `DEMO_TREND`, `DEMO_MR`, `DEMO_SESSION`, and `DEMO_MULTI` (placeholders are present—replace logins/passwords/paths locally).
+- Activate the project venv (`source .venv/bin/activate`) and install optional deps (`fastapi`, `uvicorn`, `requests`) if you want API/alert adapters.
 - Symbols funded in each terminal: EURUSD, GBPUSD, USDJPY, XAUUSD.
+
+## Quick commands
+- **Smoke test (~6 minutes):**
+  ```bash
+  python scripts/run_all_demo_bots.py --hours 0.1 --sleep-seconds 30
+  ```
+- **Full trading day (24h):**
+  ```bash
+  python scripts/run_all_demo_bots.py --hours 24 --sleep-seconds 60
+  ```
+- **Stop all bots:** Ctrl+C (the runner terminates child processes).
 
 ## Quick Start Tonight
 1) Activate venv:
@@ -48,3 +59,9 @@ python scripts/run_autopilot.py --bot demo_trend_mr_london
 - Tag edge review: `python scripts/analyze_trades.py --trades_path outputs/trades.csv --output results/trade_edge_map.csv`
 - Risk profile recap: `python scripts/run_risk_profile_summary.py`
 - Strategy readiness sanity: `python scripts/run_strategy_readiness_check.py --bot demo_trend_mr_london`
+
+## Bots started by the launcher
+- demo_trend_only
+- demo_mr_only
+- demo_session_only
+- demo_trend_mr_london

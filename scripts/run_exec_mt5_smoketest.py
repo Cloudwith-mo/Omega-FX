@@ -8,6 +8,7 @@ import json
 import sys
 import time
 from pathlib import Path
+
 import MetaTrader5 as mt5
 import pandas as pd
 
@@ -15,7 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.execution_accounts import available_profile_names, resolve_account_config  # noqa: E402
+from core.execution_accounts import (  # noqa: E402
+    available_profile_names,
+    resolve_account_config,
+)
 from core.execution_base import OrderSpec  # noqa: E402
 from core.position_sizing import calculate_position_size, get_symbol_meta  # noqa: E402
 from adapters.mt5_backend import Mt5DemoExecutionBackend  # noqa: E402
@@ -24,7 +28,9 @@ from adapters.mt5_backend import Mt5DemoExecutionBackend  # noqa: E402
 def parse_args() -> argparse.Namespace:
     choices = available_profile_names()
     parser = argparse.ArgumentParser(description="MT5 demo smoke test.")
-    parser.add_argument("--account_profile", choices=choices if choices else None, required=True)
+    parser.add_argument(
+        "--account_profile", choices=choices if choices else None, required=True
+    )
     parser.add_argument(
         "--dry_run",
         action=argparse.BooleanOptionalAction,
@@ -37,7 +43,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_positions", type=int, default=1)
     parser.add_argument("--per_trade_risk_fraction", type=float, default=0.0005)
     parser.add_argument("--daily_loss_fraction", type=float, default=0.005)
-    parser.add_argument("--risk_amount", type=float, default=5.0, help="Dollar risk for the smoke trade.")
+    parser.add_argument(
+        "--risk_amount",
+        type=float,
+        default=5.0,
+        help="Dollar risk for the smoke trade.",
+    )
     parser.add_argument("--stop_pips", type=float, default=10.0)
     parser.add_argument("--hold_seconds", type=float, default=2.0)
     parser.add_argument(
@@ -64,7 +75,9 @@ def main() -> int:
     return 0
 
 
-def perform_smoketest(account, args: argparse.Namespace, backend_cls=Mt5DemoExecutionBackend) -> dict:
+def perform_smoketest(
+    account, args: argparse.Namespace, backend_cls=Mt5DemoExecutionBackend
+) -> dict:
     backend = backend_cls(
         login=account.login,
         password=account.password,
@@ -92,7 +105,11 @@ def perform_smoketest(account, args: argparse.Namespace, backend_cls=Mt5DemoExec
         meta = get_symbol_meta(symbol)
         stop_distance = args.stop_pips * meta.pip_size
         stop_loss = entry_price - stop_distance
-        risk_fraction = args.risk_amount / backend.initial_equity if backend.initial_equity else 0.0001
+        risk_fraction = (
+            args.risk_amount / backend.initial_equity
+            if backend.initial_equity
+            else 0.0001
+        )
         volume = calculate_position_size(
             equity=backend.initial_equity,
             risk_fraction=max(risk_fraction, 1e-6),
@@ -111,6 +128,11 @@ def perform_smoketest(account, args: argparse.Namespace, backend_cls=Mt5DemoExec
             tag="SMOKE_TEST",
         )
         ticket = backend.submit_order(order)
+        if not ticket:
+            summary["error"] = (
+                f"Order filtered: {getattr(backend, 'last_limit_reason', 'unknown')}"
+            )
+            return summary
         summary["order_sent"] = True
         if not args.dry_run:
             time.sleep(max(0.0, args.hold_seconds))

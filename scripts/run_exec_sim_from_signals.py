@@ -23,8 +23,15 @@ from adapters import SimulatedExecutionBackend  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Simulated execution replay using Omega signals.")
-    parser.add_argument("--starting_equity", type=float, default=100_000.0, help="Initial equity for sizing.")
+    parser = argparse.ArgumentParser(
+        description="Simulated execution replay using Omega signals."
+    )
+    parser.add_argument(
+        "--starting_equity",
+        type=float,
+        default=100_000.0,
+        help="Initial equity for sizing.",
+    )
     parser.add_argument(
         "--limit_trades",
         type=int,
@@ -43,6 +50,30 @@ def parse_args() -> argparse.Namespace:
         default=Path("results/execution_sim_log.csv"),
         help="CSV log path for simulated fills.",
     )
+    parser.add_argument(
+        "--max_positions",
+        type=int,
+        default=2,
+        help="Maximum concurrent positions for the sim backend.",
+    )
+    parser.add_argument(
+        "--risk_fraction",
+        type=float,
+        default=1.0,
+        help="Multiplier applied on top of the firm profile risk fraction.",
+    )
+    parser.add_argument(
+        "--daily_loss_fraction",
+        type=float,
+        default=0.02,
+        help="Daily loss cap fraction before new trades are filtered.",
+    )
+    parser.add_argument(
+        "--entry_mode",
+        choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
+        default=None,
+        help="Override entry mode (default: use preset).",
+    )
     return parser.parse_args()
 
 
@@ -53,12 +84,17 @@ def main() -> int:
         starting_equity=args.starting_equity,
         data_source=None,
         symbol_data_map=None,
-        entry_mode=FTMO_EVAL_PRESET.entry_mode,
+        entry_mode=args.entry_mode or FTMO_EVAL_PRESET.entry_mode,
         trading_firm=FTMO_EVAL_PRESET.trading_firm,
         account_phase=FTMO_EVAL_PRESET.account_phase,
     )
 
-    backend = SimulatedExecutionBackend(initial_equity=args.starting_equity, log_path=args.log_path)
+    backend = SimulatedExecutionBackend(
+        initial_equity=args.starting_equity,
+        log_path=args.log_path,
+        max_positions=args.max_positions,
+        daily_loss_fraction=args.daily_loss_fraction,
+    )
     backend.connect()
 
     events = []
@@ -71,12 +107,15 @@ def main() -> int:
 
     tickets: dict[int, str] = {}
     closed = 0
+    filtered_counts = {"max_positions": 0, "daily_loss": 0, "invalid_stops": 0}
 
     for timestamp, kind, trade_id, trade in events:
         if kind == "open":
             risk_mode = RiskMode(trade["risk_mode_at_entry"])
             base_fraction = RISK_PROFILES[risk_mode].risk_per_trade_fraction
-            risk_fraction = base_fraction * float(trade.get("risk_scale", 1.0))
+            risk_fraction = (
+                base_fraction * float(trade.get("risk_scale", 1.0)) * args.risk_fraction
+            )
             if risk_fraction <= 0:
                 continue
             try:
@@ -99,7 +138,11 @@ def main() -> int:
                 timestamp=timestamp,
                 tag=trade.get("pattern_tag", "OMEGA_FX"),
             )
-            tickets[trade_id] = backend.submit_order(spec)
+            ticket = backend.submit_order(spec)
+            if ticket is None:
+                _update_filtered_counts(backend, filtered_counts)
+                continue
+            tickets[trade_id] = ticket
         else:
             ticket = tickets.get(trade_id)
             if not ticket:
@@ -115,6 +158,15 @@ def main() -> int:
                 break
 
     summary = backend.summary()
+    summary["filtered_max_positions"] = max(
+        summary.get("filtered_max_positions", 0), filtered_counts["max_positions"]
+    )
+    summary["filtered_daily_loss"] = max(
+        summary.get("filtered_daily_loss", 0), filtered_counts["daily_loss"]
+    )
+    summary["filtered_invalid_stops"] = max(
+        summary.get("filtered_invalid_stops", 0), filtered_counts["invalid_stops"]
+    )
     args.summary_path.parent.mkdir(parents=True, exist_ok=True)
     args.summary_path.write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
@@ -125,6 +177,14 @@ def _to_datetime(value) -> pd.Timestamp:
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime()
     return pd.to_datetime(value).to_pydatetime()
+
+
+def _update_filtered_counts(
+    backend: SimulatedExecutionBackend, counters: dict[str, int]
+) -> None:
+    reason = getattr(backend, "last_limit_reason", None)
+    if reason in counters:
+        counters[reason] += 1
 
 
 if __name__ == "__main__":

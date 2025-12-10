@@ -4,22 +4,21 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import pandas as pd
-
-from core.bot_profiles import load_bot_profile
-from core.position_sizing import get_symbol_meta
-from core.risk import RiskMode
-from core.backtest import run_backtest
-from config.deploy_ftmo_eval import FTMO_EVAL_PRESET
-from config.settings import DEFAULT_BREAKOUT_CONFIG, SYMBOLS
+from config.deploy_ftmo_eval import FTMO_EVAL_PRESET  # noqa: E402
+from config.settings import DEFAULT_BREAKOUT_CONFIG, SYMBOLS  # noqa: E402
+from core.backtest import run_backtest  # noqa: E402
+from core.bot_profiles import load_bot_profile  # noqa: E402
+from core.position_sizing import get_symbol_meta  # noqa: E402
+from core.risk import RiskMode  # noqa: E402
 
 LOOKBACK_DAYS_DEFAULT = 90
 

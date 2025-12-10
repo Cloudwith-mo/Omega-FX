@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
-from urllib.error import URLError, HTTPError
 
 RAW_URL = "https://raw.githubusercontent.com/mohammad95labbaf/EURUSD_LSTM_Attention/main/EURUSD_H1.csv"
 DEFAULT_OUTPUT = Path("data/eurusd_h1.csv")
@@ -36,7 +36,9 @@ def download_file(url: str, destination: Path, force: bool = False) -> None:
         with urlopen(url) as response:
             data = response.read()
     except HTTPError as exc:  # pragma: no cover
-        raise RuntimeError(f"HTTP error {exc.code} while downloading: {exc.reason}") from exc
+        raise RuntimeError(
+            f"HTTP error {exc.code} while downloading: {exc.reason}"
+        ) from exc
     except URLError as exc:  # pragma: no cover
         raise RuntimeError(f"Failed to reach server: {exc.reason}") from exc
 

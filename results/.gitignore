@@ -1,0 +1,8 @@
+﻿mt5_demo_exec_log.csv
+mt5_demo_exec_live_summary.json
+exec_log_*.csv
+# but keep our curated exports
+!data_exports/
+!data_exports/*
+!data_exports/exec_log_last_30d_demo.csv
+!data_exports/behavior_summary_last_30d_demo.txt

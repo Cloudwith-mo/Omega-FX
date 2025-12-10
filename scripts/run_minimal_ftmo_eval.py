@@ -25,8 +25,15 @@ OUTPUT_RUNS = RESULTS_DIR / "minimal_ftmo_eval_runs.csv"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Execute the minimal FTMO eval preset.")
-    parser.add_argument("--step", type=int, default=10000, help="Seed spacing for challenge simulations.")
+    parser = argparse.ArgumentParser(
+        description="Execute the minimal FTMO eval preset."
+    )
+    parser.add_argument(
+        "--step",
+        type=int,
+        default=10000,
+        help="Seed spacing for challenge simulations.",
+    )
     parser.add_argument(
         "--max_trading_days",
         type=int,
@@ -40,10 +47,14 @@ def run_minimal(step: int, max_days: int | None) -> dict:
     env = os.environ.copy()
     env["OMEGA_ENTRY_MODE"] = FTMO_EVAL_PRESET.entry_mode
     env["OMEGA_FIRM_PROFILE"] = FTMO_EVAL_PRESET.firm_profile
-    env["OMEGA_MAX_CONCURRENT_POSITIONS"] = str(FTMO_EVAL_PRESET.max_concurrent_positions)
+    env["OMEGA_MAX_CONCURRENT_POSITIONS"] = str(
+        FTMO_EVAL_PRESET.max_concurrent_positions
+    )
     env["OMEGA_TIER_SCALE_A"] = str(FTMO_EVAL_PRESET.tier_scales.get("A", 1.5))
     env["OMEGA_TIER_SCALE_B"] = str(FTMO_EVAL_PRESET.tier_scales.get("B", 0.75))
-    env["OMEGA_TIER_SCALE_UNKNOWN"] = str(FTMO_EVAL_PRESET.tier_scales.get("UNKNOWN", 0.5))
+    env["OMEGA_TIER_SCALE_UNKNOWN"] = str(
+        FTMO_EVAL_PRESET.tier_scales.get("UNKNOWN", 0.5)
+    )
     env.setdefault("OMEGA_RISK_PRESET", "FULL")
     cmd = [
         sys.executable,

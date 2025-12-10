@@ -22,7 +22,7 @@ BOT_IDS = [
     "demo_trend_mr_london",
 ]
 
-LOG_DIR = Path("logs") / "autopilot"
+LOG_DIR = REPO_ROOT / "logs" / "autopilot"
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,13 +44,31 @@ def parse_args() -> argparse.Namespace:
         default=900,
         help="Polling interval for each bot when --hours is used (defaults to 15 minutes).",
     )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=None,
+        help="Alias for --interval-seconds to match older docs/commands.",
+    )
     return parser.parse_args()
 
 
+def _resolve_interval(args: argparse.Namespace) -> int:
+    if args.sleep_seconds is not None:
+        return int(args.sleep_seconds)
+    return int(args.interval_seconds)
+
+
 def launch_bot(bot_id: str, args: argparse.Namespace, dry_run: bool = False) -> Optional[int]:
-    cmd = [sys.executable, "scripts/run_autopilot.py", "--bot", bot_id]
+    interval = _resolve_interval(args)
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "run_autopilot.py"),
+        "--bot",
+        bot_id,
+    ]
     if args.hours:
-        cmd += ["--hours", str(args.hours), "--interval-seconds", str(args.interval_seconds)]
+        cmd += ["--hours", str(args.hours), "--interval-seconds", str(interval)]
     log_path = LOG_DIR / f"{bot_id}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if dry_run:

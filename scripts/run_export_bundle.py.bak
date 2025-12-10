@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Export a bundle of execution data: clean log slice + behavior summary."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+# Add repo root to path to allow imports
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.export_recent_logs import export_recent_logs
+from scripts.run_daily_exec_report import generate_exec_report
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Export execution log slice and behavior summary."
+    )
+    parser.add_argument(
+        "--days",
+        type=float,
+        default=14.0,
+        help="Number of days to look back (default: 14).",
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="demo",
+        help="Environment label (default: demo).",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    """Main entry point."""
+    args = parse_args()
+    
+    # Configuration
+    days = int(args.days) if args.days.is_integer() else args.days
+    hours = args.days * 24.0
+    env = args.env
+    
+    # Input path
+    log_path = REPO_ROOT / f"results/mt5_{env}_exec_log.csv"
+    if not log_path.exists():
+        print(f"ERROR: Log file not found: {log_path}")
+        return 1
+        
+    # Output paths
+    output_dir = REPO_ROOT / "results/data_exports"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    csv_filename = f"exec_log_last_{days}d_{env}.csv"
+    txt_filename = f"behavior_summary_last_{days}d_{env}.txt"
+    
+    csv_path = output_dir / csv_filename
+    txt_path = output_dir / txt_filename
+    
+    print(f"Exporting data for last {days} days ({hours} hours)...")
+    
+    # 1. Export CSV Slice
+    try:
+        export_recent_logs(
+            log_path=log_path,
+            hours=hours,
+            env=env,
+            output_path=csv_path,
+            include_historical=False # Default to live only as per 'clean trade log slice'
+        )
+        print(f"  [OK] CSV Export: {csv_path}")
+    except Exception as e:
+        print(f"  [FAIL] CSV Export: {e}")
+        return 1
+
+    # 2. Generate Behavior Summary
+    try:
+        generate_exec_report(
+            log_path=log_path,
+            hours=hours,
+            tag=env,
+            output_path=txt_path,
+            include_historical=False
+        )
+        print(f"  [OK] Summary:    {txt_path}")
+    except Exception as e:
+        print(f"  [FAIL] Summary: {e}")
+        return 1
+        
+    print("\nExport complete.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

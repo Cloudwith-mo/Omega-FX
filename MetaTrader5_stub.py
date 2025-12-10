@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 TIMEFRAME_M15 = "M15"
@@ -36,7 +37,9 @@ def last_error() -> tuple[int, str]:  # pragma: no cover
     return (0, "OK")
 
 
-def login(login: int | None = None, password: str | None = None, server: str | None = None) -> bool:
+def login(
+    login: int | None = None, password: str | None = None, server: str | None = None
+) -> bool:
     global _LOGIN, _SERVER
     if login is not None:
         _LOGIN = login
@@ -94,7 +97,11 @@ def order_send(request: dict):
     position = request.get("position")
     if position:
         _POSITIONS.pop(position, None)
-        return type("Result", (), {"retcode": TRADE_RETCODE_DONE, "comment": "closed", "order": position})()
+        return type(
+            "Result",
+            (),
+            {"retcode": TRADE_RETCODE_DONE, "comment": "closed", "order": position},
+        )()
     ticket = _NEXT_TICKET
     _NEXT_TICKET += 1
     _POSITIONS[ticket] = {
@@ -105,7 +112,9 @@ def order_send(request: dict):
         "tp": request.get("tp"),
         "time": int(pd.Timestamp.utcnow().timestamp()),
     }
-    return type("Result", (), {"retcode": TRADE_RETCODE_DONE, "comment": "ok", "order": ticket})()
+    return type(
+        "Result", (), {"retcode": TRADE_RETCODE_DONE, "comment": "ok", "order": ticket}
+    )()
 
 
 def copy_rates_from_pos(symbol: str, timeframe, start: int, count: int):

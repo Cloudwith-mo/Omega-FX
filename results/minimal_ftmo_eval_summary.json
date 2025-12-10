@@ -1,15 +1,13 @@
 {
-  "pass_rate": 0.75,
-  "mean_return": 0.08439775406616654,
-  "median_return": 0.09649751348929336,
-  "max_daily_loss": 0.02003573811957414,
-  "max_trailing_dd": 0.0732857591846586,
-  "mean_trades_per_run": 324.5,
+  "pass_rate": 0.0,
+  "mean_return": 0.024950799853052673,
+  "median_return": 0.02881243415415613,
+  "max_daily_loss": 0.010293286941921076,
+  "max_trailing_dd": 0.041130443990642376,
+  "mean_trades_per_run": 89.5,
   "mean_trades_per_symbol": {
-    "EURUSD": 196.25,
-    "GBPUSD": 182.125,
-    "USDJPY": 149.75
+    "EURUSD": 113.1
   },
-  "runs": 8,
+  "runs": 10,
   "step": null
 }

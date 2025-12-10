@@ -23,7 +23,8 @@ backtester without changing the engine logic.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 
 class Strategy(ABC):
@@ -33,7 +34,7 @@ class Strategy(ABC):
     name: str = "strategy"
 
     @abstractmethod
-    def required_features(self) -> Dict[str, list[str]]:
+    def required_features(self) -> dict[str, list[str]]:
         """Return the feature requirements per timeframe.
 
         The engine will ensure these features exist before calling
@@ -41,7 +42,9 @@ class Strategy(ABC):
         """
 
     @abstractmethod
-    def on_bar(self, timestamp: Any, features_by_tf: Mapping[str, Any]) -> Dict[str, Any]:
+    def on_bar(
+        self, timestamp: Any, features_by_tf: Mapping[str, Any]
+    ) -> dict[str, Any]:
         """Produce a trading signal for the current bar.
 
         The returned dict must include at least ``action`` (``long``,
@@ -49,4 +52,3 @@ class Strategy(ABC):
         ``UNKNOWN`` or ``C``).  Additional metadata can be included in a
         ``meta`` sub-dictionary for debugging or analytics.
         """
-

@@ -32,12 +32,33 @@ from core.challenge import ChallengeOutcome, run_challenge_sweep  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Simulate FundedNext challenge outcomes.")
-    parser.add_argument("--data_path", type=str, default=str(DEFAULT_DATA_PATH), help="Path to EURUSD H1 CSV data.")
-    parser.add_argument("--step", type=int, default=500, help="Number of rows to skip between challenge seeds.")
-    parser.add_argument("--max_trading_days", type=int, default=None, help="Override max trading days.")
-    parser.add_argument("--max_calendar_days", type=int, default=None, help="Override max calendar days.")
-    parser.add_argument("--min_trading_days", type=int, default=None, help="Override min trading days.")
+    parser = argparse.ArgumentParser(
+        description="Simulate FundedNext challenge outcomes."
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default=str(DEFAULT_DATA_PATH),
+        help="Path to EURUSD H1 CSV data.",
+    )
+    parser.add_argument(
+        "--step",
+        type=int,
+        default=500,
+        help="Number of rows to skip between challenge seeds.",
+    )
+    parser.add_argument(
+        "--max_trading_days", type=int, default=None, help="Override max trading days."
+    )
+    parser.add_argument(
+        "--max_calendar_days",
+        type=int,
+        default=None,
+        help="Override max calendar days.",
+    )
+    parser.add_argument(
+        "--min_trading_days", type=int, default=None, help="Override min trading days."
+    )
     parser.add_argument(
         "--portfolio",
         action="store_true",
@@ -127,7 +148,9 @@ def load_portfolio_data() -> dict[str, dict[str, pd.DataFrame]]:
             return None
         path = Path(path_str)
         if not path.exists():
-            print(f"[!] Portfolio symbol missing {label} file at {path}; skipping frame.")
+            print(
+                f"[!] Portfolio symbol missing {label} file at {path}; skipping frame."
+            )
             return None
         return load_price_data(path)
 
@@ -160,19 +183,30 @@ def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
     num_passed = sum(1 for o in outcomes if o.passed)
     pass_rate = num_passed / num_runs if num_runs else 0.0
     avg_days_pass = (
-        sum(o.num_trading_days for o in outcomes if o.passed) / num_passed if num_passed else 0.0
+        sum(o.num_trading_days for o in outcomes if o.passed) / num_passed
+        if num_passed
+        else 0.0
     )
     failed = [o for o in outcomes if not o.passed]
-    avg_days_fail = sum(o.num_trading_days for o in failed) / len(failed) if failed else 0.0
-    max_daily_loss = max((o.max_observed_daily_loss_fraction for o in outcomes), default=0.0)
+    avg_days_fail = (
+        sum(o.num_trading_days for o in failed) / len(failed) if failed else 0.0
+    )
+    max_daily_loss = max(
+        (o.max_observed_daily_loss_fraction for o in outcomes), default=0.0
+    )
     max_trailing_dd = max((o.max_trailing_dd_fraction for o in outcomes), default=0.0)
     failure_breakdown = Counter(o.failure_reason or "passed" for o in outcomes)
 
-    final_returns = [(o.final_equity - o.num_trading_days * 0 + 0) / DEFAULT_CHALLENGE.start_equity - 1 for o in outcomes]
+    final_returns = [
+        (o.final_equity - o.num_trading_days * 0 + 0) / DEFAULT_CHALLENGE.start_equity
+        - 1
+        for o in outcomes
+    ]
     # Replace above with actual fraction: (final_equity/start -1)
     final_returns = [
         (o.final_equity / DEFAULT_CHALLENGE.start_equity) - 1 for o in outcomes
     ]
+
     def percentile(data: list[float], pct: float) -> float:
         if not data:
             return 0.0
@@ -181,14 +215,20 @@ def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
 
     stats = {
         "mean_return": float(pd.Series(final_returns).mean()) if final_returns else 0.0,
-        "median_return": float(pd.Series(final_returns).median()) if final_returns else 0.0,
+        "median_return": float(pd.Series(final_returns).median())
+        if final_returns
+        else 0.0,
         "p10_return": percentile(final_returns, 0.10),
         "p25_return": percentile(final_returns, 0.25),
         "p75_return": percentile(final_returns, 0.75),
         "p90_return": percentile(final_returns, 0.90),
     }
 
-    trades_series = pd.Series([o.num_trades for o in outcomes]) if outcomes else pd.Series(dtype=float)
+    trades_series = (
+        pd.Series([o.num_trades for o in outcomes])
+        if outcomes
+        else pd.Series(dtype=float)
+    )
     mean_trades = float(trades_series.mean()) if not trades_series.empty else 0.0
     median_trades = float(trades_series.median()) if not trades_series.empty else 0.0
 
@@ -197,13 +237,21 @@ def summarize_outcomes(outcomes: list[ChallengeOutcome]) -> dict:
         for symbol, count in (outcome.trades_per_symbol or {}).items():
             symbol_totals[symbol] = symbol_totals.get(symbol, 0) + count
     mean_trades_per_symbol = (
-        {symbol: total / num_runs for symbol, total in symbol_totals.items()} if num_runs else {}
+        {symbol: total / num_runs for symbol, total in symbol_totals.items()}
+        if num_runs
+        else {}
     )
 
     hit_thresholds = {
-        ">=5pct": sum(1 for r in final_returns if r >= 0.05) / num_runs if num_runs else 0.0,
-        ">=8pct": sum(1 for r in final_returns if r >= 0.08) / num_runs if num_runs else 0.0,
-        ">=10pct": sum(1 for r in final_returns if r >= 0.10) / num_runs if num_runs else 0.0,
+        ">=5pct": sum(1 for r in final_returns if r >= 0.05) / num_runs
+        if num_runs
+        else 0.0,
+        ">=8pct": sum(1 for r in final_returns if r >= 0.08) / num_runs
+        if num_runs
+        else 0.0,
+        ">=10pct": sum(1 for r in final_returns if r >= 0.10) / num_runs
+        if num_runs
+        else 0.0,
     }
 
     return {
@@ -232,10 +280,16 @@ def main() -> int:
     if args.account_phase:
         firm_key = (args.trading_firm or DEFAULT_TRADING_FIRM).lower()
         phase_profile = resolve_trading_phase_profile(firm_key, args.account_phase)
-    firm_profile_name = (phase_profile.firm_profile if phase_profile else args.firm_profile or DEFAULT_FIRM_PROFILE).upper()
+    firm_profile_name = (
+        phase_profile.firm_profile
+        if phase_profile
+        else args.firm_profile or DEFAULT_FIRM_PROFILE
+    ).upper()
     if firm_profile_name not in FIRM_PROFILES:
         firm_profile_name = DEFAULT_FIRM_PROFILE
-    effective_entry_mode = phase_profile.entry_mode if phase_profile else args.entry_mode
+    effective_entry_mode = (
+        phase_profile.entry_mode if phase_profile else args.entry_mode
+    )
 
     if args.portfolio:
         try:
@@ -259,11 +313,16 @@ def main() -> int:
         df = df.reset_index(drop=True)
 
     challenge_config: ChallengeConfig = DEFAULT_CHALLENGE_CONFIG
-    if args.max_trading_days is not None or args.max_calendar_days is not None or args.min_trading_days is not None:
+    if (
+        args.max_trading_days is not None
+        or args.max_calendar_days is not None
+        or args.min_trading_days is not None
+    ):
         challenge_config = replace(
             challenge_config,
             max_trading_days=args.max_trading_days or challenge_config.max_trading_days,
-            max_calendar_days=args.max_calendar_days or challenge_config.max_calendar_days,
+            max_calendar_days=args.max_calendar_days
+            or challenge_config.max_calendar_days,
             min_trading_days=args.min_trading_days or challenge_config.min_trading_days,
         )
 
@@ -291,12 +350,17 @@ def main() -> int:
         account_phase=args.account_phase,
     )
     if not outcomes:
-        print("[!] No challenge runs produced. Check dataset length or --step parameter.")
+        print(
+            "[!] No challenge runs produced. Check dataset length or --step parameter."
+        )
         return 1
 
     summary = summarize_outcomes(outcomes)
 
-    if summary["max_daily_loss_fraction"] > firm_cfg.internal_max_daily_loss_fraction + 1e-9:
+    if (
+        summary["max_daily_loss_fraction"]
+        > firm_cfg.internal_max_daily_loss_fraction + 1e-9
+    ):
         raise RuntimeError("Challenge sweep observed daily loss above internal cap.")
     if summary["failure_breakdown"].get("prop_violation", 0) > 0:
         print("[!] Warning: Prop violation occurred during simulations.")

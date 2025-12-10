@@ -52,4 +52,7 @@ def test_bearish_crossover_triggers_short_signal():
 def test_insufficient_data_returns_flat():
     row = _row(float("nan"), 1.0, 0.0005)
     decision = generate_signal(row, row)
-    assert decision == TradeDecision("flat", None, None, "Insufficient data")
+    assert decision.action == "flat"
+    assert decision.stop_distance_pips is None
+    assert decision.take_profit_distance_pips is None
+    assert decision.signal_reason == "insufficient_data"

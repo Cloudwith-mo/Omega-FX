@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from config.settings import (
     ENABLE_HIGH_VOL_SIDEWAYS_FILTER,
@@ -12,17 +11,18 @@ from config.settings import (
     ENABLE_TREND_FILTER,
 )
 
+
 @dataclass
 class TradeTags:
-    session_tag: Optional[str]
-    trend_regime: Optional[str]
-    volatility_regime: Optional[str]
+    session_tag: str | None
+    trend_regime: str | None
+    volatility_regime: str | None
 
 
 @dataclass
 class TradeFilterResult:
     allowed: bool
-    reason: Optional[str] = None
+    reason: str | None = None
     session_passed: bool = False
     trend_passed: bool = False
     volatility_passed: bool = False
@@ -44,14 +44,20 @@ def should_allow_trade(tags: TradeTags) -> TradeFilterResult:
     if ENABLE_TREND_FILTER:
         trend_passed = trend != "COUNTER_TREND"
     if not trend_passed:
-        return TradeFilterResult(False, "trend", session_passed=True, trend_passed=False)
+        return TradeFilterResult(
+            False, "trend", session_passed=True, trend_passed=False
+        )
 
     volatility_passed = True
     reason = None
     if ENABLE_LOW_VOL_FILTER and volatility == "LOW":
         volatility_passed = False
         reason = "low_volatility"
-    elif ENABLE_HIGH_VOL_SIDEWAYS_FILTER and volatility == "HIGH" and trend == "SIDEWAYS":
+    elif (
+        ENABLE_HIGH_VOL_SIDEWAYS_FILTER
+        and volatility == "HIGH"
+        and trend == "SIDEWAYS"
+    ):
         volatility_passed = False
         reason = "high_vol_sideways"
     elif volatility not in {"LOW", "NORMAL", "HIGH", "UNKNOWN"}:

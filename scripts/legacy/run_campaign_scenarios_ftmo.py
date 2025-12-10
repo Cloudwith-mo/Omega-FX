@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import heapq
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
-import heapq
 
 import numpy as np
 import pandas as pd
@@ -29,12 +28,17 @@ class FundedSample:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Simulate FTMO campaign strategies A/B.")
+    parser = argparse.ArgumentParser(
+        description="Simulate FTMO campaign strategies A/B."
+    )
     parser.add_argument(
         "--eval_runs",
         type=Path,
         default=Path("results/ftmo_eval_runs.csv"),
-        help="CSV of FTMO eval runs (produced via run_ftmo_eval_sim.py).",
+        help=(
+            "CSV of FTMO eval runs "
+            "(produced via run_ftmo_eval_sim.py)."
+        ),
     )
     parser.add_argument(
         "--funded_runs_6m",
@@ -113,7 +117,9 @@ def _parse_payouts(value: object) -> list[dict]:
 def sample_eval(eval_df: pd.DataFrame, rng: np.random.Generator) -> EvalSample:
     idx = rng.integers(0, len(eval_df))
     row = eval_df.iloc[idx]
-    return EvalSample(passed=bool(row["passed"]), duration=float(row["num_trading_days"]))
+    return EvalSample(
+        passed=bool(row["passed"]), duration=float(row["num_trading_days"])
+    )
 
 
 def sample_funded(
@@ -158,7 +164,13 @@ def simulate_strategy_a_single(
         if not sample.passed:
             continue
         finish_day = sample.duration
-        funded_total, month_contrib, death = sample_funded(funded_df, rng, finish_day, horizon_days, horizon_months)
+        funded_total, month_contrib, death = sample_funded(
+            funded_df,
+            rng,
+            finish_day,
+            horizon_days,
+            horizon_months,
+        )
         total += funded_total
         monthly += month_contrib
         any_death = any_death or death
@@ -221,9 +233,21 @@ def simulate_campaigns(
     monthly = np.zeros((sims, horizon_months))
     for i in range(sims):
         if strategy == "A":
-            total, month_contrib, death = simulate_strategy_a_single(eval_df, funded_df, horizon_days, horizon_months, rng)
+            total, month_contrib, death = simulate_strategy_a_single(
+                eval_df,
+                funded_df,
+                horizon_days,
+                horizon_months,
+                rng,
+            )
         elif strategy == "B":
-            total, month_contrib, death = simulate_strategy_b_single(eval_df, funded_df, horizon_days, horizon_months, rng)
+            total, month_contrib, death = simulate_strategy_b_single(
+                eval_df,
+                funded_df,
+                horizon_days,
+                horizon_months,
+                rng,
+            )
         else:
             raise ValueError(f"Unknown strategy '{strategy}'")
         totals[i] = total
@@ -245,8 +269,12 @@ def simulate_campaigns(
         "prob_any_account_death": float(np.mean(deaths)),
         "mean_monthly_payouts": monthly.mean(axis=0).round(2).tolist(),
         "median_monthly_payouts": np.median(monthly, axis=0).round(2).tolist(),
-        "mean_cumulative_payouts": cumulative.mean(axis=0).round(2).tolist(),
-        "median_cumulative_payouts": np.median(cumulative, axis=0).round(2).tolist(),
+        "mean_cumulative_payouts": (
+            cumulative.mean(axis=0).round(2).tolist()
+        ),
+        "median_cumulative_payouts": (
+            np.median(cumulative, axis=0).round(2).tolist()
+        ),
     }
     return summary, totals, monthly, cumulative, deaths
 
@@ -310,4 +338,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

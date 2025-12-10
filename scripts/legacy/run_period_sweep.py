@@ -23,7 +23,9 @@ DEFAULT_PERIODS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run challenge sims across historical periods.")
+    parser = argparse.ArgumentParser(
+        description="Run challenge sims across historical periods."
+    )
     parser.add_argument(
         "--entry_mode",
         choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
@@ -58,7 +60,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_period(entry_mode: str, firm_profile: str, start: str, end: str, step: int) -> dict:
+def run_period(
+    entry_mode: str, firm_profile: str, start: str, end: str, step: int
+) -> dict:
     env = os.environ.copy()
     env["OMEGA_ENTRY_MODE"] = entry_mode
     env["OMEGA_FIRM_PROFILE"] = firm_profile

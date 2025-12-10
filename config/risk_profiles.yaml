@@ -1,0 +1,25 @@
+demo:
+  conservative:
+    per_trade_risk_fraction: 0.0005
+    daily_loss_fraction: 0.01
+    max_positions: 2
+  normal:
+    per_trade_risk_fraction: 0.001
+    daily_loss_fraction: 0.02
+    max_positions: 4
+  aggressive:
+    per_trade_risk_fraction: 0.002
+    daily_loss_fraction: 0.03
+    max_positions: 6
+live:
+  max_per_trade_risk_fraction: 0.002
+  max_daily_loss_fraction: 0.02
+  max_positions: 4
+  conservative:
+    per_trade_risk_fraction: 0.0005
+    daily_loss_fraction: 0.01
+    max_positions: 2
+  normal:
+    per_trade_risk_fraction: 0.001
+    daily_loss_fraction: 0.015
+    max_positions: 3

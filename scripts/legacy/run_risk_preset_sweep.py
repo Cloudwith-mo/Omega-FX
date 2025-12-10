@@ -21,7 +21,13 @@ def run_challenge_sim(preset: str) -> dict:
     env = os.environ.copy()
     env["OMEGA_RISK_PRESET"] = preset
     env.setdefault("OMEGA_ENTRY_MODE", "H1_ONLY")
-    cmd = [sys.executable, "scripts/run_challenge_sim.py", "--portfolio", "--step", "2000"]
+    cmd = [
+        sys.executable,
+        "scripts/run_challenge_sim.py",
+        "--portfolio",
+        "--step",
+        "2000",
+    ]
     subprocess.run(cmd, check=True, env=env)
     if not SUMMARY_PATH.exists():
         raise FileNotFoundError(f"Challenge summary not found at {SUMMARY_PATH}")

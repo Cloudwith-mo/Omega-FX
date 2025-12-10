@@ -3,9 +3,15 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 config/mt5_accounts.yaml
+config/notifications.yaml
+config/bot_state.json
+venv/
 outputs/
 results/*
 !results/
+!results/.gitignore
+!results/data_exports/
+!results/data_exports/*
 !results/eval_profile_ftmo.json
 !results/eval_profile_ftmo_summary.json
 !results/eval_profile_fundednext.json

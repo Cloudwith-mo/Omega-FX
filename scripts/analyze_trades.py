@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 GROUP_COLUMNS = [
     ["session_tag"],
     ["volatility_regime"],
@@ -74,7 +73,9 @@ def main() -> None:
         raise SystemExit("Trades file is empty; run the backtest first.")
 
     if "r_multiple" not in df.columns:
-        raise SystemExit("Trades file missing r_multiple column. Re-run backtest after Step 4.1.")
+        raise SystemExit(
+            "Trades file missing r_multiple column. Re-run backtest after Step 4.1."
+        )
 
     all_results: list[pd.DataFrame] = []
     combo_cols = ["session_tag", "trend_regime", "volatility_regime", "pattern_tag"]
@@ -106,7 +107,15 @@ def main() -> None:
 
     print("\nTop buckets by expectancy:")
     for _, row in top_k.iterrows():
-        tags = [f"{col}={row[col]}" for col in ["session_tag", "trend_regime", "volatility_regime", "pattern_tag"]]
+        tags = [
+            f"{col}={row[col]}"
+            for col in [
+                "session_tag",
+                "trend_regime",
+                "volatility_regime",
+                "pattern_tag",
+            ]
+        ]
         print(
             f"{' '.join(tags)} | n={row['n_trades']} | "
             f"win_rate={row['win_rate']:.2%} | expectancy={row['expectancy']:.2f}R | maxDD={row['max_dd_r_multiple']:.2f}R"
@@ -114,7 +123,15 @@ def main() -> None:
 
     print("\nBottom buckets by expectancy:")
     for _, row in bottom_k.iterrows():
-        tags = [f"{col}={row[col]}" for col in ["session_tag", "trend_regime", "volatility_regime", "pattern_tag"]]
+        tags = [
+            f"{col}={row[col]}"
+            for col in [
+                "session_tag",
+                "trend_regime",
+                "volatility_regime",
+                "pattern_tag",
+            ]
+        ]
         print(
             f"{' '.join(tags)} | n={row['n_trades']} | "
             f"win_rate={row['win_rate']:.2%} | expectancy={row['expectancy']:.2f}R | maxDD={row['max_dd_r_multiple']:.2f}R"

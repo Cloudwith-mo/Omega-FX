@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from core.backtest import BarEvent, build_event_stream
+from core.backtest import build_event_stream
 
 
 def test_build_event_stream_orders_events_across_symbols() -> None:

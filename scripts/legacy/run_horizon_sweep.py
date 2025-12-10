@@ -18,7 +18,9 @@ FIRM_PROFILES = ["TIGHT_PROP", "LOOSE_PROP"]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run challenge sims across multiple horizons.")
+    parser = argparse.ArgumentParser(
+        description="Run challenge sims across multiple horizons."
+    )
     parser.add_argument(
         "--entry_mode",
         choices=["H1_ONLY", "M15_WITH_H1_CTX", "HYBRID"],
@@ -60,7 +62,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_for_horizon(horizon: int, entry_mode: str, firm_profile: str, risk_preset: str, step: int) -> dict:
+def run_for_horizon(
+    horizon: int, entry_mode: str, firm_profile: str, risk_preset: str, step: int
+) -> dict:
     env = os.environ.copy()
     env["OMEGA_RISK_PRESET"] = risk_preset
     env["OMEGA_ENTRY_MODE"] = entry_mode
@@ -115,7 +119,9 @@ def main() -> int:
     for firm in args.firm_profiles:
         for horizon in args.horizons:
             print(f"\n=== Timeboxed sweep: horizon={horizon} days, firm={firm} ===")
-            summary = run_for_horizon(horizon, args.entry_mode, firm, args.risk_preset.upper(), args.step)
+            summary = run_for_horizon(
+                horizon, args.entry_mode, firm, args.risk_preset.upper(), args.step
+            )
             rows.append(extract_row(summary))
     df = pd.DataFrame(rows).sort_values(["firm_profile", "horizon"])
     df.to_csv(args.output, index=False)

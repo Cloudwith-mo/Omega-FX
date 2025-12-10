@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 
 from core.risk import RiskMode
 
-
 INITIAL_EQUITY = 100_000.0
 PIP_VALUE_PER_STANDARD_LOT = 10.0  # EUR/USD pip value at 1 standard lot
 MIN_LOT_SIZE = 0.01
@@ -118,7 +117,15 @@ SYMBOLS = [
         m15_path="data/XAUUSD_M15.csv",
         h4_path="data/XAUUSD_H4.csv",
     ),
+    SymbolConfig(
+        name="GCF",
+        h1_path="data/GCF_1h.csv",
+        m15_path="data/GCF_15m.csv",
+        h4_path="data/GCF_4h.csv",
+    ),
 ]
+
+
 @dataclass(frozen=True)
 class FirmProfile:
     name: str
@@ -166,10 +173,10 @@ FIRM_PROFILES = {
     ),
     "PROP_EVAL": FirmProfile(
         name="PROP_EVAL",
-        internal_max_daily_loss_fraction=0.025,
-        internal_max_trailing_dd_fraction=0.07,
-        prop_max_daily_loss_fraction=0.05,
-        prop_max_total_loss_fraction=0.10,
+        internal_max_daily_loss_fraction=0.025,  # Stop slightly before hard limit
+        internal_max_trailing_dd_fraction=0.07,  # Stop slightly before hard limit
+        prop_max_daily_loss_fraction=0.03,
+        prop_max_total_loss_fraction=0.08,
     ),
 }
 
@@ -251,7 +258,9 @@ DEFAULT_EVAL_PROFILE_PER_FIRM = {
 }
 
 
-def resolve_trading_phase_profile(trading_firm: str | None, account_phase: str | None) -> TradingProfile | None:
+def resolve_trading_phase_profile(
+    trading_firm: str | None, account_phase: str | None
+) -> TradingProfile | None:
     if not account_phase:
         return None
     firm_key = (trading_firm or DEFAULT_TRADING_FIRM).lower()

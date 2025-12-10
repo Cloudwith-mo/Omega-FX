@@ -14,18 +14,42 @@ import pandas as pd
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a capital plan Monte-Carlo simulation.")
-    parser.add_argument("--firm", type=str, default="FTMO_CHALLENGE", help="Firm profile label (for metadata only).")
-    parser.add_argument("--months", type=int, default=12, help="Campaign horizon in months.")
-    parser.add_argument("--evals_per_wave", type=int, default=4, help="Number of evals launched in each wave.")
-    parser.add_argument("--waves_per_month", type=int, default=1, help="How many eval waves start per calendar month.")
+    parser = argparse.ArgumentParser(
+        description="Run a capital plan Monte-Carlo simulation."
+    )
+    parser.add_argument(
+        "--firm",
+        type=str,
+        default="FTMO_CHALLENGE",
+        help="Firm profile label (for metadata only).",
+    )
+    parser.add_argument(
+        "--months", type=int, default=12, help="Campaign horizon in months."
+    )
+    parser.add_argument(
+        "--evals_per_wave",
+        type=int,
+        default=4,
+        help="Number of evals launched in each wave.",
+    )
+    parser.add_argument(
+        "--waves_per_month",
+        type=int,
+        default=1,
+        help="How many eval waves start per calendar month.",
+    )
     parser.add_argument(
         "--eval_fee",
         type=float,
         default=300.0,
         help="Baseline eval cost (used when plan_mode=BASIC).",
     )
-    parser.add_argument("--initial_bankroll", type=float, default=1000.0, help="Starting bankroll allocated to eval fees.")
+    parser.add_argument(
+        "--initial_bankroll",
+        type=float,
+        default=1000.0,
+        help="Starting bankroll allocated to eval fees.",
+    )
     parser.add_argument(
         "--risk_budget_fraction",
         type=float,
@@ -92,7 +116,12 @@ def parse_args() -> argparse.Namespace:
         default=12,
         help="Months covered by the funded payout CSV (6 or 12).",
     )
-    parser.add_argument("--simulations", type=int, default=20000, help="Number of Monte-Carlo campaigns.")
+    parser.add_argument(
+        "--simulations",
+        type=int,
+        default=20000,
+        help="Number of Monte-Carlo campaigns.",
+    )
     parser.add_argument("--seed", type=int, default=2024, help="Random seed.")
     parser.add_argument(
         "--output",
@@ -133,7 +162,9 @@ def load_funded_runs(path: Path, horizon_months: int) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Funded payout runs missing columns: {sorted(missing)}")
     df["parsed_payouts"] = df["payouts"].apply(_parse_payouts)
-    df["monthly_series"] = df["parsed_payouts"].apply(lambda entries: _payouts_to_monthly(entries, horizon_months))
+    df["monthly_series"] = df["parsed_payouts"].apply(
+        lambda entries: _payouts_to_monthly(entries, horizon_months)
+    )
     if df.empty:
         raise ValueError("Funded payout CSV is empty.")
     return df.reset_index(drop=True)
@@ -170,13 +201,17 @@ def sample_eval(eval_df: pd.DataFrame, rng: np.random.Generator) -> tuple[bool, 
     return bool(row["passed"]), float(row["num_trading_days"])
 
 
-def sample_funded_monthly(funded_df: pd.DataFrame, rng: np.random.Generator) -> list[float]:
+def sample_funded_monthly(
+    funded_df: pd.DataFrame, rng: np.random.Generator
+) -> list[float]:
     idx = rng.integers(0, len(funded_df))
     row = funded_df.iloc[idx]
     return list(row["monthly_series"])
 
 
-def simulate(args: argparse.Namespace, eval_df: pd.DataFrame, funded_df: pd.DataFrame) -> dict:
+def simulate(
+    args: argparse.Namespace, eval_df: pd.DataFrame, funded_df: pd.DataFrame
+) -> dict:
     rng = np.random.default_rng(args.seed)
     horizon_months = args.months
     waves = int(args.months * args.waves_per_month)
@@ -188,7 +223,9 @@ def simulate(args: argparse.Namespace, eval_df: pd.DataFrame, funded_df: pd.Data
     first_10k = np.full(args.simulations, np.nan)
     final_bankrolls = np.zeros(args.simulations)
     eval_counts = np.zeros(args.simulations)
-    feeder_fee = args.feeder_eval_fee if args.feeder_eval_fee is not None else args.eval_fee
+    feeder_fee = (
+        args.feeder_eval_fee if args.feeder_eval_fee is not None else args.eval_fee
+    )
 
     for sim in range(args.simulations):
         bankroll = args.initial_bankroll
@@ -208,7 +245,10 @@ def simulate(args: argparse.Namespace, eval_df: pd.DataFrame, funded_df: pd.Data
                 break
             if args.plan_mode == "PLAN_D":
                 if not stage2_active:
-                    if withdrawn_total >= args.plan_d_stage2_trigger or wave_time >= args.plan_d_stage1_month_limit:
+                    if (
+                        withdrawn_total >= args.plan_d_stage2_trigger
+                        or wave_time >= args.plan_d_stage1_month_limit
+                    ):
                         stage2_active = True
                 large_fraction = args.plan_d_large_fraction if stage2_active else 0.0
                 large_count = int(round(args.evals_per_wave * large_fraction))
@@ -219,7 +259,10 @@ def simulate(args: argparse.Namespace, eval_df: pd.DataFrame, funded_df: pd.Data
                 if feeder_count + large_count == 0:
                     feeder_count = args.evals_per_wave
                     large_count = 0
-                wave_cost = feeder_count * feeder_fee + large_count * args.large_eval_fee
+                wave_cost = (
+                    feeder_count * feeder_fee
+                    + large_count * args.large_eval_fee
+                )
             else:
                 feeder_count = args.evals_per_wave
                 large_count = 0
@@ -332,10 +375,14 @@ def main() -> int:
         raise ValueError("risk_budget_fraction must be between 0 and 1.")
     if not (0.0 <= args.reinvest_fraction <= 1.0):
         raise ValueError("reinvest_fraction must be between 0 and 1.")
-    if args.plan_mode == "PLAN_D" and not (0.0 <= args.plan_d_large_fraction <= 1.0):
+    if args.plan_mode == "PLAN_D" and not (
+        0.0 <= args.plan_d_large_fraction <= 1.0
+    ):
         raise ValueError("plan_d_large_fraction must be between 0 and 1.")
     eval_df = load_eval_runs(args.eval_runs)
-    funded_df = load_funded_runs(args.funded_runs, args.funded_horizon_months)
+    funded_df = load_funded_runs(
+        args.funded_runs, args.funded_horizon_months
+    )
     summary, per_run = simulate(args, eval_df, funded_df)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2))

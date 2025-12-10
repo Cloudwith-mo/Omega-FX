@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
 
 import yaml
 
@@ -34,7 +33,7 @@ def _load_yaml(path: Path) -> dict:
 def load_account_profiles(
     config_path: Path | None = None,
     example_path: Path | None = None,
-) -> Dict[str, dict]:
+) -> dict[str, dict]:
     """Load MT5 profile definitions from yaml files."""
 
     base_path = config_path or DEFAULT_CONFIG_PATH
@@ -62,7 +61,9 @@ def resolve_account_config(
     config_path: Path | None = None,
     example_path: Path | None = None,
 ) -> Mt5AccountConfig:
-    profiles = load_account_profiles(config_path=config_path, example_path=example_path)
+    profiles = load_account_profiles(
+        config_path=config_path, example_path=example_path
+    )
     profile_data = profiles.get(profile_name.upper()) if profile_name else None
     env_login = _maybe_int(os.environ.get("OMEGA_MT5_LOGIN"))
     env_server = os.environ.get("OMEGA_MT5_SERVER")

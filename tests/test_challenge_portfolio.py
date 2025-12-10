@@ -9,7 +9,12 @@ from core.strategy import TradeDecision
 
 def _build_symbol_df(name: str, start_price: float) -> pd.DataFrame:
     timestamps = pd.date_range("2020-01-01 09:00:00", periods=4, freq="h", tz="UTC")
-    closes = [start_price, start_price + 0.002, start_price + 0.004, start_price + 0.006]
+    closes = [
+        start_price,
+        start_price + 0.002,
+        start_price + 0.004,
+        start_price + 0.006,
+    ]
     data = {
         "timestamp": timestamps,
         "open": closes,
@@ -36,7 +41,9 @@ def test_portfolio_challenge_generates_outcomes(monkeypatch) -> None:
         ("EURUSD", 1): "long",
     }
 
-    def fake_generate_signal(current_row: pd.Series, previous_row: pd.Series) -> TradeDecision:
+    def fake_generate_signal(
+        current_row: pd.Series, previous_row: pd.Series
+    ) -> TradeDecision:
         key = (current_row.get("symbol"), int(current_row.name))
         action = plan.get(key, "flat")
         if action == "flat":
