@@ -39,8 +39,8 @@ All plans use 20 000 Monte-Carlo campaigns. Summary JSON/CSV artifacts live un
   - Stage 2 unlocks once withdrawn payouts ≥ `$plan_d_stage2_trigger` (default $10 k) or month ≥ 6. Once active, each wave shifts a configurable fraction (default 50 %) of the slots to 100 k evals (`large_eval_fee`, default $350).
   - Waves still obey `risk_budget_fraction × bankroll`. If a wave cannot be funded safely, it is skipped.
 - **How to explore:**  
-  - Single configuration: `python scripts/run_capital_plan_sim.py --plan_mode PLAN_D ...`  
-  - Grid sweep / $100k ambition surface: `python scripts/run_capital_surface_ftmo.py` (outputs `results/capital_surface_ftmo_plan_d_12m.csv`).
+  - Single configuration: `python scripts/legacy/run_capital_plan_sim.py --plan_mode PLAN_D ...`  
+  - Grid sweep / $100k ambition surface: `python scripts/legacy/run_capital_surface_ftmo.py` (outputs `results/capital_surface_ftmo_plan_d_12m.csv`).
 - **Notable candidates (all from `capital_surface_ftmo_plan_d_12m.csv`, 10k sims each):**
   1. **Starter ambition:** `initial_bankroll=5k`, `evals_per_wave=6`, `waves_per_month=2`, `reinvest_fraction=0.5` → mean payout ≈ $259 k, median ≈ $258 k, `P(total ≥ 100k) ≈ 1.0`, `P(net loss)=0`, median ~2.5 months to first $5 k, ~3.1 months to $10 k.
   2. **Higher firepower:** `initial_bankroll=10k`, `evals_per_wave=6`, `waves_per_month=2`, `reinvest_fraction=0.5–0.7` → mean payouts $186–310 k, `P(total ≥ 100k) ≈ 1.0`, zero net-loss campaigns.
@@ -59,7 +59,7 @@ All plans use 20 000 Monte-Carlo campaigns. Summary JSON/CSV artifacts live un
 
 ## Policy comparison (B→D vs B→E→D vs BE3-early)
 
-- `scripts/run_capital_policy_compare.py` now evaluates all three escalation policies for 12 months with 20k Monte-Carlo campaigns each (artifacts in `results/capital_plan_ftmo_plan_*` plus the aggregate `results/capital_plan_ftmo_policy_compare.json`).
+- `scripts/legacy/run_capital_policy_compare.py` now evaluates all three escalation policies for 12 months with 20k Monte-Carlo campaigns each (artifacts in `results/capital_plan_ftmo_plan_*` plus the aggregate `results/capital_plan_ftmo_policy_compare.json`).
 
 | Policy | Mean / Median payout | `P(≥50k)` / `P(≥100k)` | `P(net loss)` | Median months to $10k | Notes |
 | --- | --- | --- | --- | --- | --- |

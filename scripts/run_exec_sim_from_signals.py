@@ -19,7 +19,7 @@ from core.backtest import run_backtest  # noqa: E402
 from core.execution_base import OrderSpec  # noqa: E402
 from core.position_sizing import calculate_position_size  # noqa: E402
 from core.risk import RISK_PROFILES, RiskMode  # noqa: E402
-from execution_backends.simulated import SimulatedExecutionBackend  # noqa: E402
+from adapters import SimulatedExecutionBackend  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

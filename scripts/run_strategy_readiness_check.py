@@ -1,110 +1,159 @@
-﻿#!/usr/bin/env python3
-"""Lightweight readiness checks for configured symbols per bot.
-
-Checks:
-- File existence for H1/M15/H4 paths in settings.SYMBOLS
-- Non-empty data and timestamp range
-- Basic OHLC sanity (min/max close)
-
-Usage:
-  python scripts/run_strategy_readiness_check.py --bot demo_trend_only
-"""
+#!/usr/bin/env python3
+"""Quick readiness check per bot/strategy using a short backtest window."""
 
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-from typing import Dict, List
 import sys
+from pathlib import Path
 
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:  # pragma: no cover - CLI entry
+if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from config.settings import SYMBOLS
+from config.deploy_ftmo_eval import FTMO_EVAL_PRESET  # noqa: E402
+from config.settings import DEFAULT_BREAKOUT_CONFIG, SYMBOLS  # noqa: E402
+from core.backtest import run_backtest  # noqa: E402
+from core.bot_profiles import load_bot_profile  # noqa: E402
+from core.position_sizing import get_symbol_meta  # noqa: E402
+from core.risk import RiskMode  # noqa: E402
+
+LOOKBACK_DAYS_DEFAULT = 90
 
 
-def load_info(path: Path) -> dict:
-    info = {"path": path, "exists": path.exists(), "rows": 0, "start": None, "end": None, "min_close": None, "max_close": None}
-    if not info["exists"]:
-        return info
-    try:
-        df = pd.read_csv(path, sep=None, engine="python")
-        info["rows"] = len(df)
-        if info["rows"] > 0:
-            cols = [c.strip().lower() for c in df.columns]
-            df.columns = cols
-            if "<date>" in cols and "<time>" in cols:
-                df["timestamp"] = pd.to_datetime(df["<date>"] + " " + df["<time>"], errors="coerce")
-            elif "timestamp" in cols:
-                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-            else:
-                df["timestamp"] = pd.to_datetime(df.iloc[:, 0], errors="coerce")
-            ts_col = "timestamp"
-            close_col = None
-            for candidate in ("close", "<close>"):
-                if candidate in cols:
-                    close_col = candidate
-                    break
-            df = df.dropna(subset=[ts_col])
-            info["start"] = df[ts_col].min()
-            info["end"] = df[ts_col].max()
-            if close_col in df.columns:
-                info["min_close"] = pd.to_numeric(df[close_col], errors="coerce").min()
-                info["max_close"] = pd.to_numeric(df[close_col], errors="coerce").max()
-    except Exception as exc:  # pragma: no cover - CLI guard
-        info["error"] = str(exc)
-    return info
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Strategy readiness snapshot for a given bot.")
+    parser.add_argument("--bot", required=True, help="Bot id to check.")
+    parser.add_argument("--lookback-days", type=int, default=LOOKBACK_DAYS_DEFAULT, help="Days of data to sample.")
+    return parser.parse_args()
 
 
-
-def check_symbol(sym_cfg) -> dict:
-    paths = {
-        "H1": Path(sym_cfg.h1_path),
-        "M15": Path(sym_cfg.m15_path) if sym_cfg.m15_path else None,
-        "H4": Path(sym_cfg.h4_path) if sym_cfg.h4_path else None,
-    }
-    details: Dict[str, dict] = {}
-    warnings: List[str] = []
-    for label, p in paths.items():
-        if p is None:
+def load_symbol_payload(symbol: str, lookback_days: int) -> dict[str, pd.DataFrame] | None:
+    symbol_cfg = next((cfg for cfg in SYMBOLS if cfg.name.upper() == symbol.upper()), None)
+    if not symbol_cfg:
+        print(f"[WARN] No symbol config found for {symbol}; skipping.")
+        return None
+    payload: dict[str, pd.DataFrame] = {}
+    cutoff = pd.Timestamp.utcnow() - pd.Timedelta(days=lookback_days)
+    for tf_key, path in {"H1": symbol_cfg.h1_path, "M15": symbol_cfg.m15_path}.items():
+        if not path:
             continue
-        info = load_info(p)
-        details[label] = info
-        if not info["exists"]:
-            warnings.append(f"{label}: missing file {p}")
-        elif info.get("error"):
-            warnings.append(f"{label}: error reading {p} -> {info['error']}")
-        elif info["rows"] == 0:
-            warnings.append(f"{label}: empty file {p}")
-    return {"details": details, "warnings": warnings}
+        p = Path(path)
+        if not p.exists():
+            continue
+        df = pd.read_csv(p)
+        if "timestamp" not in df.columns:
+            continue
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df = df[df["timestamp"] >= cutoff]
+        if df.empty:
+            continue
+        payload[tf_key] = df
+    return payload or None
+
+
+def trades_to_metrics(trades: list[dict], symbol: str) -> dict:
+    if not trades:
+        return {}
+    meta = get_symbol_meta(symbol)
+    entry_times = [pd.to_datetime(t["entry_time"]) for t in trades if t.get("entry_time")]
+    exit_times = [pd.to_datetime(t["exit_time"]) for t in trades if t.get("exit_time")]
+    days = 1
+    if entry_times:
+        span_days = (max(entry_times) - min(entry_times)).total_seconds() / 86400
+        days = max(1, span_days)
+    trades_per_day = len(trades) / days
+
+    stop_pips = []
+    take_pips = []
+    holds_minutes = []
+    r_values = []
+    wins = 0
+    for trade in trades:
+        entry = float(trade.get("entry_price", 0.0) or 0.0)
+        stop = float(trade.get("stop_loss", 0.0) or 0.0)
+        take = float(trade.get("take_profit", 0.0) or 0.0)
+        if entry and stop:
+            stop_pips.append(abs(entry - stop) / meta.pip_size)
+        if entry and take:
+            take_pips.append(abs(entry - take) / meta.pip_size)
+        try:
+            entry_ts = pd.to_datetime(trade.get("entry_time"))
+            exit_ts = pd.to_datetime(trade.get("exit_time"))
+            holds_minutes.append(max(0.0, (exit_ts - entry_ts).total_seconds() / 60))
+        except Exception:
+            pass
+        r_val = float(trade.get("r_multiple", 0.0) or 0.0)
+        r_values.append(r_val)
+        if r_val > 0:
+            wins += 1
+    win_rate = wins / len(trades) if trades else 0.0
+    return {
+        "trades_per_day": trades_per_day,
+        "median_stop_pips": float(pd.Series(stop_pips).median()) if stop_pips else 0.0,
+        "median_take_pips": float(pd.Series(take_pips).median()) if take_pips else 0.0,
+        "median_hold_minutes": float(pd.Series(holds_minutes).median()) if holds_minutes else 0.0,
+        "win_rate": win_rate,
+        "avg_r": float(pd.Series(r_values).mean()) if r_values else 0.0,
+    }
+
+
+def flag_pathologies(metrics: dict) -> list[str]:
+    warnings = []
+    if metrics.get("trades_per_day", 0) > 20:
+        warnings.append("trades/day > 20")
+    if 0 < metrics.get("median_stop_pips", 0) < 5:
+        warnings.append("median SL < 5 pips")
+    if 0 < metrics.get("median_hold_minutes", 0) < 5:
+        warnings.append("median hold < 5 min")
+    return warnings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Strategy readiness checker")
-    parser.add_argument("--bot", required=True, help="Bot name for labeling only")
-    args = parser.parse_args()
-
-    print(f"=== Strategy Readiness: {args.bot} ===")
-    ok_symbols = []
-    for sym_cfg in SYMBOLS:
-        result = check_symbol(sym_cfg)
-        warnings = result["warnings"]
-        if warnings:
-            print(f"[WARN] {sym_cfg.name}: {', '.join(warnings)}")
+    args = parse_args()
+    profile = load_bot_profile(args.bot)
+    symbol_payloads: dict[str, dict[str, pd.DataFrame]] = {}
+    for symbol in profile.symbols:
+        payload = load_symbol_payload(symbol, args.lookback_days)
+        if payload:
+            symbol_payloads[symbol] = payload
         else:
-            ok_symbols.append(sym_cfg.name)
-            print(f"[OK] {sym_cfg.name}")
-        for timeframe, info in result["details"].items():
-            if not info["exists"]:
-                continue
-            start = info["start"]
-            end = info["end"]
-            rows = info["rows"]
-            print(f"  {timeframe}: rows={rows} start={start} end={end} close[min,max]={info['min_close']},{info['max_close']}")
-    print(f"OK symbols: {', '.join(ok_symbols) if ok_symbols else 'none'}")
+            print(f"[WARN] No data found for {symbol}; skipping.")
+    if not symbol_payloads:
+        print("No data available for requested symbols.")
+        return 1
+
+    risk_mode = RiskMode.ULTRA_ULTRA_CONSERVATIVE if profile.risk_tier.lower() == "conservative" else RiskMode.CONSERVATIVE
+    result = run_backtest(
+        df=None,
+        starting_equity=100_000.0,
+        initial_mode=risk_mode,
+        symbol_data_map=symbol_payloads,
+        entry_mode=FTMO_EVAL_PRESET.entry_mode,
+        firm_profile=profile.firm_profile,
+    )
+
+    print(f"=== Strategy readiness for bot: {profile.bot_id} ===")
+    for symbol in profile.symbols:
+        if symbol not in symbol_payloads:
+            print(f"{symbol}: skipped (no data loaded)")
+            continue
+        sym_trades = [t for t in result.trades if t.get("symbol") == symbol]
+        metrics = trades_to_metrics(sym_trades, symbol)
+        for strat in profile.strategies:
+            print(
+                f"{strat.id} @ {symbol}: trades/day={metrics.get('trades_per_day', 0):.2f} "
+                f"med SL={metrics.get('median_stop_pips', 0):.1f} pips "
+                f"med TP={metrics.get('median_take_pips', 0):.1f} pips "
+                f"med hold={metrics.get('median_hold_minutes', 0):.1f} min "
+                f"win%={metrics.get('win_rate', 0)*100:.1f}% avgR={metrics.get('avg_r', 0):.2f}"
+            )
+            warnings = flag_pathologies(metrics)
+            if warnings:
+                print(f"  WARNING: {', '.join(warnings)}")
     return 0
 
 

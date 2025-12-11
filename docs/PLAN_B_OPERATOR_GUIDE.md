@@ -23,7 +23,7 @@ This is the “load once, run for a year” playbook for the default FTMO capita
 | 1 | Buy 4 evals ($200). Start all on day 1. Track each eval’s equity vs. time. | Use `run_minimal_ftmo_eval.py --step 10000` first to ensure the preset is behaving. |
 | 2 | Launch the next wave of 4 evals ($200) **only if** payouts/reinvestments have restored the bankroll ≥ $200 and the risk budget check passes. Otherwise, skip the wave and conserve bankroll. | Expect some evals to still be running from wave 1; do not exceed 4 concurrent evals unless reinvested capital permits. |
 | 3 | By now, at least one funded account should have produced a payout (median 3 months to $5k). Withdraw 50% of each payout, reinvest the other 50% immediately. Continue launching monthly waves if the bankroll supports it. | If an eval reaches +10% before 20 trading days, stop it and prepare the funded account. |
-| 4 | Re-run `run_capital_plan_sim.py` with updated bankroll if you made manual deviations (e.g., paused waves). Launch wave 4 only if the bankroll ≥ $200 and the risk check passes. | |
+| 4 | Re-run `scripts/legacy/run_capital_plan_sim.py` with updated bankroll if you made manual deviations (e.g., paused waves). Launch wave 4 only if the bankroll ≥ $200 and the risk check passes. | |
 | 5 | Keep the 20-day timebox: if an eval has not passed by trading day 20 (≈ 1 month), treat it as a soft fail and stop monitoring it. Launch the next wave only after clearing the risk budget check. | |
 | 6 | Take stock: compare real payouts vs. the simulator’s median ($31k by month 12). If payouts lag badly, consider pausing new evals until existing funded accounts catch up. | |
 
@@ -49,7 +49,7 @@ Repeat the same logic through month 12. The simulator’s median path reaches ~$
 ## Monitoring & Health Checks
 
 1. **Monthly sanity check:**  
-   `python scripts/run_capital_plan_sim.py --firm FTMO_CHALLENGE --months 12 --evals_per_wave 4 --waves_per_month 1 --eval_fee 50 --initial_bankroll <current_bankroll> --risk_budget_fraction 0.7 --reinvest_fraction 0.5 --eval_runs results/minimal_ftmo_eval_runs.csv --funded_runs results/funded_payout_ftmo_12m_runs.csv --funded_horizon_months 12 --output results/capital_plan_ftmo_plan_b_feeders_final_summary.json --output_runs results/capital_plan_ftmo_plan_b_feeders_final_runs.csv`
+   `python scripts/legacy/run_capital_plan_sim.py --firm FTMO_CHALLENGE --months 12 --evals_per_wave 4 --waves_per_month 1 --eval_fee 50 --initial_bankroll <current_bankroll> --risk_budget_fraction 0.7 --reinvest_fraction 0.5 --eval_runs results/minimal_ftmo_eval_runs.csv --funded_runs results/funded_payout_ftmo_12m_runs.csv --funded_horizon_months 12 --output results/capital_plan_ftmo_plan_b_feeders_final_summary.json --output_runs results/capital_plan_ftmo_plan_b_feeders_final_runs.csv`
 
 2. **Before each batch of eval purchases:**  
    Confirm `wave_cost ≤ risk_budget_fraction × bankroll` (e.g., $200 ≤ 0.7 × $current_bankroll). If not, skip the wave.

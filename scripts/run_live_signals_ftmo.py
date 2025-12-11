@@ -44,6 +44,7 @@ from core.risk_aggression import (  # noqa: E402
     should_allow_risk_aggression,
 )
 from core.strategy import generate_signal  # noqa: E402
+from core.risk import RiskMode  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,10 +136,11 @@ def evaluate_signals(
     symbol_sets: dict[str, SymbolFrameSet],
     account_equity: float,
     firm_label: str,
+    risk_mode: RiskMode | None = None,
 ) -> list[dict]:
     firm_cfg = resolve_firm_profile(firm_label)
     challenge = DEFAULT_CHALLENGE
-    risk_state = RiskState(account_equity, DEFAULT_RISK_MODE, firm_profile=firm_cfg)
+    risk_state = RiskState(account_equity, risk_mode or DEFAULT_RISK_MODE, firm_profile=firm_cfg)
     risk_profile = RISK_PROFILES[risk_state.current_mode]
     max_open_positions = FTMO_EVAL_PRESET.max_concurrent_positions
     events = build_event_stream(symbol_sets)

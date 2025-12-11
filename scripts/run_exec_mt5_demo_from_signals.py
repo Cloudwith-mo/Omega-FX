@@ -24,7 +24,7 @@ from core.execution_accounts import (  # noqa: E402
 from core.execution_base import OrderSpec  # noqa: E402
 from core.position_sizing import calculate_position_size  # noqa: E402
 from core.risk import RISK_PROFILES, RiskMode  # noqa: E402
-from execution_backends.mt5_demo import Mt5DemoExecutionBackend  # noqa: E402
+from adapters.mt5_backend import Mt5DemoExecutionBackend  # noqa: E402
 from strategies.omega_mr_m15 import OMEGA_MR_STRATEGY_ID, generate_mean_reversion_signal
 from strategies.omega_session_london import (
     OMEGA_SESSION_LDN_STRATEGY_ID,

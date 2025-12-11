@@ -20,6 +20,7 @@ class Mt5AccountConfig:
     password: str | None
     description: str = ""
     default_symbol: str = "EURUSD"
+    terminal_path: str | None = None
 
 
 def _load_yaml(path: Path) -> dict:
@@ -82,6 +83,7 @@ def resolve_account_config(
 
     description = (profile_data or {}).get("description") if profile_data else ""
     default_symbol = (profile_data or {}).get("default_symbol", "EURUSD")
+    terminal_path = (profile_data or {}).get("terminal_path")
 
     return Mt5AccountConfig(
         name=profile_name.upper() if profile_name else "UNSPECIFIED",
@@ -90,6 +92,7 @@ def resolve_account_config(
         password=resolved_password,
         description=description or "",
         default_symbol=default_symbol or "EURUSD",
+        terminal_path=terminal_path,
     )
 
 

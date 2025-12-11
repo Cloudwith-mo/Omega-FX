@@ -1,0 +1,14 @@
+env: prop_eval
+mt5_account: FTMO_TRIAL
+firm_profile: FTMO_CHALLENGE
+symbols:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+strategies:
+  - name: trend_follow
+    risk_scale: 0.6
+  - name: momentum_filter
+    risk_scale: 0.4
+account_equity: 50000
+description: "Conservative prop-eval profile tuned for tighter risk appetite."

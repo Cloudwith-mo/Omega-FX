@@ -1,0 +1,15 @@
+bot_id: demo_trend_only
+mt5_account: DEMO_TREND
+env: demo
+firm_profile: PROP_EVAL
+risk_tier: conservative
+symbols:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+  - XAUUSD
+strategies:
+  - id: OMEGA_M15_TF1
+    enabled: true
+    risk_scale: 1.0
+description: "Baseline demo bot focused on the core trend-following stack."

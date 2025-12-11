@@ -1,0 +1,15 @@
+bot_id: demo_session_only
+mt5_account: DEMO_SESSION
+env: demo
+firm_profile: PROP_EVAL
+risk_tier: conservative
+symbols:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+  - XAUUSD
+strategies:
+  - id: OMEGA_SESSION_LDN_M15
+    enabled: true
+    risk_scale: 1.0
+description: "Demo bot constrained to London session momentum."

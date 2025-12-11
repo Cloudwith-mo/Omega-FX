@@ -16,7 +16,7 @@ Strategy (e.g. Omega M15) → Trade signal → OrderSpec → ExecutionBackend
 
 ## 2. Simulated backend
 
-- Module: `execution_backends/simulated.py`
+- Module: `adapters.SimulatedExecutionBackend` (re-exporting `execution_backends/simulated.py`)
 - Implements the generic `ExecutionBackend` interface (connect/disconnect/sync/submit/close).
 - Logs fills to `results/execution_sim_log.csv` and tracks realized equity / drawdown, so you can compare with `run_minimal_ftmo_eval.py`.
 - No broker or network dependencies.
